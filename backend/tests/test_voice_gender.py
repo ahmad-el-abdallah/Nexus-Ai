@@ -1,5 +1,5 @@
-"""Employees speak with a voice and grammar that match their gender; voice input is
-English or Arabic only and is never translated."""
+"""Employees speak with a voice that matches their gender and reply only in English;
+voice input is still recognised as English or Arabic and transcribed, never translated."""
 
 from __future__ import annotations
 
@@ -61,19 +61,27 @@ async def test_female_employee_speaks_arabic_with_the_raised_voice(make_settings
     assert rate_of(male) == 22_050
 
 
-def test_agents_use_their_grammatical_gender_and_only_english_or_arabic() -> None:
-    department = SimpleNamespace(name="Sales", description="Sells.", responsibilities=["Sell"])
-    woman = SimpleNamespace(name="Priya Nair", role="SDR", department="sales", gender="female")
-    man = SimpleNamespace(name="Diego Alvarez", role="AE", department="sales", gender="male")
-    unset = SimpleNamespace(name="Joud", role="AE", department="sales", gender=None)
-    for employee in (woman, man, unset):
-        text = system_prompt(employee, department)  # type: ignore[arg-type]
-        assert "write only in English or Arabic" in text
-        assert "never translate the owner's words" in text
-    assert "You are a woman" in system_prompt(woman, department)  # type: ignore[arg-type]
-    assert "أنا سعيدة" in system_prompt(woman, department)  # type: ignore[arg-type]
-    assert "You are a man" in system_prompt(man, department)  # type: ignore[arg-type]
-    assert "You are a" not in system_prompt(unset, department)  # type: ignore[arg-type]
+def test_agents_reply_only_in_english() -> None:
+    sales = SimpleNamespace(name="Sales", description="Sells.", responsibilities=["Sell"])
+    eng = SimpleNamespace(name="Software Engineering", description="Builds.", responsibilities=["Build"])
+    seller = SimpleNamespace(name="Priya Nair", role="SDR", department="sales", gender="female")
+    engineer = SimpleNamespace(name="Felix Schmidt", role="Dev", department="engineering", gender="male")
+    for employee, dept in ((seller, sales), (engineer, eng)):
+        text = system_prompt(employee, dept)  # type: ignore[arg-type]
+        assert "always reply in English" in text
+        assert "Never reply in Arabic" in text
+        assert "You are a woman" not in text and "You are a man" not in text
+
+
+def test_engineers_are_told_to_build_complete_tools() -> None:
+    eng = SimpleNamespace(name="Software Engineering", description="Builds.", responsibilities=["Build"])
+    sales = SimpleNamespace(name="Sales", description="Sells.", responsibilities=["Sell"])
+    engineer = SimpleNamespace(name="Felix Schmidt", role="Dev", department="engineering", gender=None)
+    seller = SimpleNamespace(name="Priya Nair", role="SDR", department="sales", gender=None)
+    eng_prompt = system_prompt(engineer, eng)  # type: ignore[arg-type]
+    assert "build it fully and for real" in eng_prompt
+    assert "network or port scanner" in eng_prompt
+    assert "build it fully and for real" not in system_prompt(seller, sales)  # type: ignore[arg-type]
 
 
 class StubWhisper:

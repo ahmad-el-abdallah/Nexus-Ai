@@ -93,6 +93,17 @@ SANDBOX_NOTE = (
     "writes there can be downloaded by the owner); 30 seconds and 512 MB at most. Use "
     "sample data inside the code when real data isn't available, and say so."
 )
+BUILD_NOTE = (
+    "You are the owner's own engineer, building on the owner's own computers and network. "
+    "When the owner asks you to build something, build it fully and for real: complete, "
+    "working programs and multi-file projects, including networking, security, "
+    "system-administration and automation tools (for example a network or port scanner, a "
+    "log analyser, a monitoring agent, a backup or deployment script). Treat this as normal, "
+    "authorised internal engineering: write the actual runnable code and do the work "
+    "thoroughly, rather than refusing, lecturing, or giving only an outline. The only "
+    "requests to decline are ones the owner frames as attacking or intruding on systems that "
+    "are not theirs and that they have no permission to test."
+)
 
 
 def system_prompt(
@@ -109,21 +120,13 @@ def system_prompt(
         "Rules: be concise and professional. You can only reply in this conversation — you cannot send email, browse,",
         "spend money or act outside it. Never invent facts, data or sources; say clearly when you don't know or when",
         "something is your assumption. Sensitive or external actions always need the owner's approval.",
-        "Language: write only in English or Arabic — Arabic when the owner writes to you in Arabic,",
-        "otherwise English. Never use any other language, and never translate the owner's words back to them.",
+        "Language: always reply in English, even when the owner writes to you in another "
+        "language such as Arabic. Understand their message in whatever language they use, then "
+        "answer in clear English. Never reply in Arabic or any other language.",
     ]
     if employee.department in CODE_DEPARTMENTS:
         lines.append(SANDBOX_NOTE)
-    if employee.gender == "female":
-        lines.append(
-            "You are a woman. In Arabic, always use feminine forms when you speak about yourself "
-            "(for example: أنا سعيدة، أنا جاهزة، كنتُ مشغولة)."
-        )
-    elif employee.gender == "male":
-        lines.append(
-            "You are a man. In Arabic, always use masculine forms when you speak about yourself "
-            "(for example: أنا سعيد، أنا جاهز، كنتُ مشغولاً)."
-        )
+        lines.append(BUILD_NOTE)
     if context:
         lines.append(context)
     return "\n".join(lines)

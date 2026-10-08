@@ -525,11 +525,10 @@ CEO (capped at 14 kB).
   then every voice's pitch measured on this machine; ambiguous voices excluded). Arabic:
   the only local Arabic voice (Kareem) is male, so women use it raised 1.5× (~112 →
   ~168 Hz: generated slower, played faster) — an approximation until a female Arabic
-  voice exists. The same gender gives the character a matching look and makes the
-  agent use feminine/masculine Arabic forms for itself.
-- **English and Arabic only:** recognition picks English or Arabic (whichever Whisper
-  scores higher) and always transcribes — never translates — what was said; agents are
-  told to write only in English or Arabic, in the language the owner used.
+  voice exists. The same gender also gives the character a matching look in the office.
+- **Input English/Arabic, replies English:** recognition picks English or Arabic
+  (whichever Whisper scores higher) and always transcribes — never translates — what the
+  owner said. Agents always reply in English, even when the owner writes in Arabic.
 - **Voice sessions feel face to face:** in hands-free mode the mic stops after 0.8 s of
   silence and the transcript is sent at once (no countdown). Messages from a session ask
   for a spoken reply (`reply_style=spoken`: one to four plain sentences — no tables,

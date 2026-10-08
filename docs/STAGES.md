@@ -323,3 +323,14 @@ to the owner's files, 30 s / 512 MB / 64 processes) and the output, exit code an
 created files appear in the dialog. Real run: Sameer Abuhummus wrote a 91-line error-
 rate script for a task (13 s); approved, it ran in 49 ms and produced error_report.csv.
 
+### Follow-up (owner request): English-only replies, and build real tools
+
+Agents now always reply in English even when the owner writes in Arabic (voice input is
+still transcribed in the spoken language, never translated — only the agent's reply is
+English). The Arabic grammatical-gender prompt lines were dropped; the gender-matched
+voice stays. Engineering, IT, Data, QA and Security employees are told they are the
+owner's own engineer and must build complete, real, runnable tools for the owner's own
+systems — including networking, security and system-administration tools such as a
+network or port scanner — instead of refusing or giving only an outline, declining only
+requests framed as intruding on systems the owner has no right to.
+

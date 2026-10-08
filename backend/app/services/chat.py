@@ -271,12 +271,12 @@ class ChatService:
                 "say so if you need something from earlier."
             )
         lines.append(
-            "Reply in the language of the owner's latest message: Arabic if it is in Arabic, "
-            "otherwise English."
+            "Always reply in English, even if the owner writes in Arabic or another language."
         )
         lines.append(
-            "You cannot start or execute tasks yourself yet. If the owner asks for work, "
-            "answer with your plan or draft; the owner can record any message as a task."
+            "When the owner asks you to build or write something, give the full, finished "
+            "result here (complete code, document or plan), not just an outline. The owner can "
+            "record any message as a task or run code you write in the sandbox."
         )
         return picked, "\n".join(lines), len(picked)
 

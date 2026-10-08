@@ -71,7 +71,8 @@ def task_prompt(task: Task, conversation: list[Message]) -> str:
     parts += [
         "",
         "If something essential is missing, make a reasonable assumption, state it, and "
-        "still deliver. Write in the language of the task.",
+        "still deliver. Reply in English. Build the deliverable fully and for real "
+        "(complete, working code or content), not a summary of what you would do.",
     ]
     return "\n".join(parts)
 

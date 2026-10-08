@@ -316,7 +316,7 @@ async def test_voice_message_reaches_the_right_employee_with_context(
     assert prompt[-1]["content"].startswith("[Voice message, transcribed automatically")
     assert FAKE_TRANSCRIPT in prompt[-1]["content"]
     assert "voice-message.webm" not in prompt[-1]["content"]
-    assert "Reply in the language of the owner's latest message" in prompt[0]["content"]
+    assert "Always reply in English" in prompt[0]["content"]
 
     audio = owner["attachments"][0]["id"]
     played = await voice_client.get(f"/api/attachments/{audio}?play=1")
