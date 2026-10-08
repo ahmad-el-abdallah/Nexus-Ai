@@ -41,6 +41,8 @@ Ctrl-C stops both.
 | `make lint` | `ruff check`, `ruff format --check`, `eslint`, `tsc --noEmit` |
 | `make format` | Auto-fix and format backend code |
 | `make build` | Next.js production build |
+| `make test-e2e` | Playwright browser tests against a production build, using your installed Chrome on the real GPU (`E2E_SOFTWARE_GL=1` forces software rendering) |
+| `make bench URL=…` | Orbit the 3D office for 10 s per quality level and print frame-time statistics |
 | `make smoke` | Starts both servers on a throwaway DB, checks every health endpoint directly and via the proxy, then confirms the proxy reports failure once the backend stops |
 | `make check` | lint, test, build and smoke |
 | `make migrate` | Apply migrations |
@@ -86,6 +88,27 @@ frontend/  Next.js app (src/app, src/components, src/lib, src/hooks)
 scripts/   setup.sh, dev.sh, smoke.sh
 docs/      architecture, development, stages, ADRs, design references
 ```
+
+## 3D headquarters
+
+- **Edit the building** in `frontend/src/world/layout/building.ts`. Then run
+  `npm run test` in `frontend`. The layout tests check:
+  - rooms tile each floor without overlapping
+  - furniture stays inside its room and doesn't collide
+  - every doorway has a clear metre on both sides
+  - wall items fit their walls
+  - each geometry fits its declared footprint
+- **URL options:**
+  - `?view=2d` opens the 2D plan
+  - `?quality=low|balanced|high` sets render quality
+  - `?perf` shows renderer statistics
+  - `?bench=1` orbits continuously and publishes `window.__NEXUS_BENCH__`
+  - `?nowebgl` simulates a browser without WebGL
+- **Diagnostics:** `window.__NEXUS_PERF__` holds live renderer counters.
+  `window.__NEXUS_OFFICE__` exposes read-only state, the camera and a few test actions.
+- **Dev mode noise.** React Strict Mode double-mounts the canvas in development. This
+  logs "Attempted to synchronously unmount a root" for the room labels. It doesn't
+  happen in production builds, and the e2e tests run against production.
 
 ## Database and migrations
 

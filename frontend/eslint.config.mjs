@@ -5,6 +5,12 @@ import nextTs from "eslint-config-next/typescript";
 const eslintConfig = defineConfig([
   ...nextVitals,
   ...nextTs,
+  {
+    // three.js scene objects (materials, renderer, groups) are mutable by design
+    // and updated imperatively, which is the React Three Fiber model.
+    files: ["src/world/**/*.{ts,tsx}"],
+    rules: { "react-hooks/immutability": "off" },
+  },
   // Override default ignores of eslint-config-next.
   globalIgnores([
     // Default ignores of eslint-config-next:

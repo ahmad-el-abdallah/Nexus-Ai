@@ -78,7 +78,8 @@ check "GET /api/system/info"  200 "$API/api/system/info"  '"installation_id":"[0
 
 echo "Frontend:"
 check "GET /healthz"          200 "$WEB/healthz"          '"status":"ok"'
-check "GET / (boot console)"  200 "$WEB/"                 'NEXUS AI'
+check "GET / (headquarters)" 200 "$WEB/"                 'NEXUS AI'
+check "GET /system"           200 "$WEB/system"           'System status'
 
 echo "Frontend → backend proxy:"
 check "GET /api/health/ready" 200 "$WEB/api/health/ready" 'x-request-id'

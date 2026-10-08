@@ -7,9 +7,9 @@ interactive 3D headquarters. Every department, employee, desk and meeting room m
 real system functionality: real tasks, real model calls, real approvals. Nothing on
 screen is simulated.
 
-> **Status: Stage 1 of 16 — Foundation & architecture.** The application skeleton,
-> health checks, database migrations, logging and documentation are in place. The 3D
-> office arrives in Stage 2. See [`docs/STAGES.md`](docs/STAGES.md).
+> **Status: Stage 2 of 16 — 3D office world.** The headquarters is an interactive 3D
+> building with selectable rooms and floors, an isometric camera and a 2D fallback.
+> AI employees arrive in Stage 3. See [`docs/STAGES.md`](docs/STAGES.md).
 
 ## Quick start
 
@@ -21,12 +21,20 @@ make setup   # install dependencies, create .env files (generates a local secret
 make dev     # backend on :8000 + frontend on :3000
 ```
 
-Open **http://localhost:3000**. API docs: **http://localhost:3000/api/docs**.
+Open **http://localhost:3000** for the headquarters and **http://localhost:3000/system**
+for live system status. API docs: **http://localhost:3000/api/docs**.
+
+**Navigating the office:** drag to pan · right-drag to rotate · scroll to zoom · click a
+room (or its label) to focus it · `G`/`2`/`All` buttons pick floors · ⌂ returns to the
+overview. Keyboard: arrows/WASD pan, `Q`/`E` rotate, `+`/`-` zoom, `0` overview, `Esc`
+deselect.
 
 ```bash
 make test    # backend (pytest) + frontend (vitest)
 make lint    # ruff + eslint + tsc
 make smoke   # boot both servers and verify health end-to-end
+make test-e2e  # browser tests of the 3D office (Playwright + your Chrome)
+make bench URL=http://127.0.0.1:3000  # 3D frame-time benchmark on this GPU
 make help    # every command
 ```
 

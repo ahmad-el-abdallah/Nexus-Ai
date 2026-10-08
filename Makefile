@@ -5,7 +5,7 @@ SHELL := /bin/bash
 BACKEND  := cd backend &&
 FRONTEND := cd frontend &&
 
-.PHONY: help setup dev migrate migration test test-backend test-frontend lint format build smoke check clean
+.PHONY: help setup dev migrate migration test test-backend test-frontend test-e2e lint format build smoke bench check clean
 
 help: ## Show available commands
 	@grep -E '^[a-z-]+:.*?## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-15s\033[0m %s\n", $$1, $$2}'
@@ -31,6 +31,9 @@ test-backend: ## Run backend tests (pytest)
 test-frontend: ## Run frontend tests (vitest)
 	$(FRONTEND) npm run test --silent
 
+test-e2e: ## Browser end-to-end tests (Playwright + local Chrome, builds the frontend)
+	$(FRONTEND) npm run test:e2e
+
 lint: ## Lint and type-check backend and frontend
 	$(BACKEND) uv run --frozen ruff check . && uv run --frozen ruff format --check .
 	$(FRONTEND) npm run lint --silent && npm run typecheck --silent
@@ -44,7 +47,10 @@ build: ## Production build of the frontend
 smoke: ## Boot both servers and verify health end-to-end (stop `make dev` first)
 	@./scripts/smoke.sh
 
-check: lint test build smoke ## Everything CI would run
+bench: ## 3D performance benchmark on this machine's GPU (needs a running frontend: URL=...)
+	node scripts/bench-3d.mjs $(or $(URL),http://127.0.0.1:3000)
+
+check: lint test build smoke test-e2e ## Everything CI would run
 
 clean: ## Remove build artifacts and caches (keeps .env files and the database)
 	rm -rf frontend/.next frontend/coverage .artifacts backend/.pytest_cache backend/.ruff_cache

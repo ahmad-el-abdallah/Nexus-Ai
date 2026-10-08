@@ -5,8 +5,8 @@ reported, and the next stage starts only after the owner's explicit approval.
 
 | # | Stage | Status |
 | --- | --- | --- |
-| 1 | Repository, architecture & environment | ✅ Complete, awaiting approval for Stage 2 |
-| 2 | High-quality 3D office world | ⏳ Not started |
+| 1 | Repository, architecture & environment | ✅ Approved |
+| 2 | High-quality 3D office world | ✅ Complete, awaiting approval for Stage 3 |
 | 3 | AI employee characters | ⏳ Not started |
 | 4 | Departments & organisational structure | ⏳ Not started |
 | 5 | NVIDIA AI connection | ⏳ Not started |
@@ -48,3 +48,26 @@ reported, and the next stage starts only after the owner's explicit approval.
 - Structured logging with secret redaction, plus request IDs
 - Initial automated tests: 24 backend, 8 frontend, and an 8-check smoke test
 - Development docs: [`DEVELOPMENT.md`](DEVELOPMENT.md)
+
+---
+
+## Stage 2 — High-quality 3D office world
+
+**Completed:** 2026-10-08 · **Commit:** "Stage 2: 3D office world"
+
+### Acceptance criteria
+
+| Criterion | Result | Evidence |
+| --- | --- | --- |
+| Office renders correctly | PASS | e2e "renders the office…" (no console errors); screenshots reviewed on the real GPU |
+| Camera navigation works | PASS | e2e: keyboard zoom, rotate button, mouse drag pan; room focus framing unit-tested (`fit.test.ts`) |
+| Rooms are identifiable | PASS | Labels for all visible rooms, department signs, accent outlines; e2e checks labels |
+| Interactable areas work | PASS | e2e: label click, raycast floor click, room search, floor selector, 2D plan selection |
+| Scene is responsive | PASS | e2e mobile (Pixel 7): no horizontal overflow, bottom-sheet panel |
+| Performance is measured | PASS | `scripts/bench-3d.mjs` results in ARCHITECTURE.md §8 |
+
+### Rooms delivered
+
+- **Ground floor:** Reception, Sales, Marketing, Employee Lounge, Cafeteria
+- **Level 2:** Executive Office, Meeting Room, Engineering
+- 28 workstations with stable desk ids, ready for employee assignment in Stage 3

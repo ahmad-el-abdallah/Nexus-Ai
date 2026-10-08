@@ -69,8 +69,12 @@ flowchart LR
 | `src/lib/api.ts` | 1 | Typed same-origin API client |
 | `src/lib/webgl.ts` | 1 | WebGL2 detection, which picks 3D or the 2D fallback |
 | `src/components/` | 1+ | Shared UI (status, panels, cards) |
-| `src/world/` | 2–3, 14 | *Planned.* React Three Fiber scene: building, rooms, furniture, avatars, camera |
-| `src/world2d/` | 2 | *Planned.* 2D office plan fallback when WebGL2 is unavailable |
+| `src/world/layout/` | 2 | Building data: floors, rooms, walls/openings, wall screens, furniture, workstations (stable ids) |
+| `src/world/geometry/` | 2 | Procedural geometry: `PartsBuilder` merges rounded primitives with baked vertex colours |
+| `src/world/scene/` | 2 | React Three Fiber scene: floors, cutaway walls, instanced furniture, rooms, doors, labels, camera rig, perf probe |
+| `src/world/plan2d/` | 2 | Accessible SVG floor plan, generated from the same layout data |
+| `src/world/state/` | 2 | Zustand store: floor/room selection, view mode, quality, camera requests |
+| `src/components/hq/` | 2 | Headquarters HUD: room finder, floor stack, room panel, camera buttons, stats |
 | `src/features/*` | 4+ | *Planned.* Org chart, chat, voice, meetings, projects, email, settings |
 | `src/stores/` | 3+ | *Planned.* Client state (Zustand) hydrated from REST and patched by WS events |
 | `src/realtime/` | 6 | *Planned.* WebSocket client, reconnect/backoff, event → store reducer |
@@ -221,7 +225,35 @@ cosmetic and is visibly distinct from work state.
 | Audit | Append-only audit log of sensitive actions and authorization failures |
 | Headers | `X-Frame-Options: DENY`, `nosniff`, a strict referrer policy, and a permissions policy that allows the microphone only for self |
 
-## 8. 3D performance budget (Stage 2+)
+## 8. 3D headquarters (Stage 2) and performance budget
+
+### How the world is built
+
+- **Single source of truth.** `src/world/layout/building.ts` describes floors, rooms,
+  walls with door openings, wall-mounted screens, furniture and workstations. The 3D
+  scene, the 2D plan, the room panel statistics and the layout tests all read from it.
+- **Procedural geometry, no downloaded assets.** Furniture is modelled from rounded
+  primitives (`geometry/furniture.ts`). Each piece's parts are merged per *finish*
+  (matte, gloss, glow, glass) with colours baked into vertex attributes.
+- **Instancing.** Every copy of a furniture type on a floor renders in one instanced
+  draw call per finish. Chairs pick up their department colour through instance colours.
+- **Cutaway walls.** Walls are grouped by floor and outward direction. Groups facing the
+  camera swap to a low "cut" version with a bright top edge, so rotating never hides
+  the interior.
+- **Floors.** Level 2 covers only the rear half (the stepped cutaway from the reference
+  image). Selecting a lower floor lifts the floors above away and hides them.
+- **Honest screens.** Monitors show a lock screen ("Workstation available"). Boards show
+  real empty states ("No tasks yet", "No meetings scheduled"). The clock shows the real
+  time. Nothing simulates work.
+- **Rendering on demand.** `frameloop="demand"`: frames render only while something
+  changes (camera, doors, floor transitions). The shadow map is static and re-rendered
+  only when geometry visibility changes.
+- **Interaction.** Room floors are the only raycast targets; everything else opts out.
+  Clicks are distinguished from pans by pointer travel.
+
+### Performance budget and measurements
+
+
 
 The development machine has an **Intel UHD (CometLake-U) integrated GPU, 4 cores and
 7.5 GB RAM**. The office must run smoothly there.
@@ -241,7 +273,21 @@ The development machine has an **Intel UHD (CometLake-U) integrated GPU, 4 cores
   - adaptive DPR and level of detail for distant floors
 - **Fallback:** when WebGL2 is unavailable (detected by `lib/webgl.ts`), users get a 2D
   office plan.
-- Frame time and draw calls are measured and reported at each 3D stage.
+- Frame time and draw calls are measured and reported at each 3D stage
+  (`scripts/bench-3d.mjs`; `make bench`).
+
+Stage 2 measurements were taken on the development machine (Intel UHD CML GT2,
+1920×1080, production build, camera orbiting continuously for 10 s, 60 Hz vsync):
+
+| Quality | Avg fps | p50 frame | p95 frame | Draw calls | Triangles |
+| --- | --- | --- | --- | --- | --- |
+| Low (no shadows/post) | 59.5 | 16.7 ms | 17.6 ms | 160 | 161k |
+| **Balanced (default)** | **48.6** | 18.9 ms | 28.1 ms | 171 | 161k |
+| High (+ ambient occlusion) | 28.2 | 34 ms | 44.9 ms | 222 | 162k |
+
+When nothing moves, no frames are drawn at all. While the camera moves, adaptive DPR
+lowers the resolution (down to 0.6×) and restores full sharpness when it stops. High
+quality is intended for discrete GPUs.
 
 ## 9. Runtime and persistence
 
