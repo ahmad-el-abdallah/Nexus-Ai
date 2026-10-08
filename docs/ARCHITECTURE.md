@@ -42,8 +42,7 @@ flowchart LR
   mail["Email providers<br/>Gmail · Microsoft 365 · SMTP/IMAP"]
 
   owner -->|HTTPS/HTTP| web
-  web -->|"/api/* (proxied REST)"| api
-  owner -.->|"WebSocket (Stage 6)"| api
+  web -->|"/api/* (proxied REST + SSE events)"| api
   api --> db
   api -->|"server-side key"| nim
   api -->|"OAuth / SMTP (Stage 9)"| mail
@@ -55,9 +54,12 @@ flowchart LR
   - In `next dev`, the proxy target is read at startup.
   - In a production build it is **fixed at build time**, so changing
     `NEXUS_BACKEND_URL` requires rebuilding.
-- **Realtime** traffic (Stage 6+) uses a WebSocket from the browser directly to FastAPI,
-  because Next.js rewrites don't proxy WebSockets. The socket is protected by an origin
-  allowlist and a session token.
+- **Realtime** traffic (Stage 6+) is one Server-Sent Events stream per tab
+  (`GET /api/events`) through the same proxy. SSE was chosen over a direct WebSocket
+  because it passes through the Next.js rewrite unchanged, so the browser still talks
+  only to its own origin and no extra origin/token handling is needed. Updates flow
+  server → client only; everything the owner does goes through REST. A heartbeat every
+  15 s keeps the proxy's idle timeout from closing the stream.
 
 ## 3. Containers and modules
 
@@ -77,7 +79,8 @@ flowchart LR
 | `src/components/hq/` | 2 | Headquarters HUD: room finder, floor stack, room panel, camera buttons, stats |
 | `src/features/*` | 4+ | *Planned.* Org chart, chat, voice, meetings, projects, email, settings |
 | `src/stores/` | 3+ | *Planned.* Client state (Zustand) hydrated from REST and patched by WS events |
-| `src/realtime/` | 6 | *Planned.* WebSocket client, reconnect/backoff, event → store reducer |
+| `src/lib/events.ts` | 6 | One shared `EventSource` per tab; reconnects (and retries failed responses); tells listeners to reload after a reconnect |
+| `src/components/chat/`, `src/world/state/chatStore.ts` | 6 | Chat page, conversation list/search, Markdown messages, composer with attachments, task dialog, department task board; live event reducers |
 
 ### Backend (`backend/`, Python 3.12 · FastAPI · SQLAlchemy 2 async · Alembic)
 
@@ -91,7 +94,7 @@ flowchart LR
 | `app/models/` | 1+ | ORM models (Stage 1: `system_metadata`) |
 | `app/services/org/` | 4 | *Planned.* Departments, roles, agents, hierarchy, desk assignment |
 | `app/services/ai/` | 5 | *Planned.* AI gateway: provider adapters, model catalog, routing, budgets, usage |
-| `app/services/chat/` | 6 | *Planned.* Conversations, routing to agent/department/CEO, streaming |
+| `app/services/chat.py`, `app/api/chat.py`, `app/api/tasks.py` | 6 | Conversations, routing to employee/department/CEO, background streaming replies, context, attachments, search, tasks |
 | `app/services/voice/` | 7 | *Planned.* Optional local STT/TTS adapters |
 | `app/services/orchestration/` | 8 | *Planned.* Task state machine, scheduler, delegation, review gates |
 | `app/services/tools/` | 8, 15 | *Planned.* Tool gateway: allowlists, sandboxing, permission checks |
@@ -100,7 +103,7 @@ flowchart LR
 | `app/services/projects/` | 11 | *Planned.* Projects, milestones, boards, approvals |
 | `app/services/meetings/` | 12 | *Planned.* Turn-based meeting orchestrator with hard turn limits |
 | `app/services/knowledge/` | 13 | *Planned.* Documents, versions, permission-aware retrieval |
-| `app/events/` | 3, 6 | *Planned.* In-process event bus that fans out to WebSocket subscribers |
+| `app/core/events.py`, `app/api/events.py` | 6 | In-process event bus fanned out to SSE subscribers (`/api/events`) |
 | `app/services/audit/` | 8, 15 | *Planned.* Append-only audit log of sensitive actions |
 
 ## 4. Data model (overview)
@@ -187,7 +190,7 @@ The flow is `Draft → Awaiting Approval → Approved → Sending → Sent | Fai
 
 ### 5.4 Office projection (Stages 3, 6, 14)
 
-`backend event → event bus → WebSocket → client store → avatar state machine`
+`backend event → event bus → SSE (/api/events) → client store → avatar state machine`
 
 Avatars play state animations (working, meeting, blocked, error) only for states that
 exist in the backend. Ambient behaviour, such as idle wandering or coffee breaks, is
@@ -217,7 +220,7 @@ cosmetic and is visibly distinct from work state.
 | Concern | Control |
 | --- | --- |
 | Secrets | Env or encrypted DB only; `SecretStr`; log redaction processor; repo secret scan in tests |
-| Network exposure | Servers bind to `127.0.0.1`; CORS allowlist; WS origin check (Stage 6) |
+| Network exposure | Servers bind to `127.0.0.1`; CORS allowlist; live events use the same-origin proxy (no direct socket) |
 | Authorization | Permission levels are Read-only, Draft, Internal execution, External (approval), Administrator. They are checked in the service layer (Stage 4, then hardened in Stage 15) |
 | Approvals | Approval records are verified server-side before any external side effect (email, publish, spend, deploy, delete) |
 | Prompt injection | Emails, documents and web content are wrapped as untrusted data. Tools available while processing untrusted content are restricted. Instructions found in such content are never executed |
@@ -258,12 +261,14 @@ cosmetic and is visibly distinct from work state.
     and when the status last changed
   - migration `0002` seeds 19 staff
   - `GET /api/employees`, plus owner-only `POST …/suspend` and `…/activate`
-  - the frontend polls the roster every 5 s (WebSockets replace this in Stage 6)
+  - live updates arrive over `/api/events` (Stage 6); the frontend polls every 5 s only
+    while that stream is disconnected
 - **Status drives location and pose** (`world/characters/status.ts`):
   - **location:** desk, meeting room or away
   - **pose:** idle, typing, thinking, talking, reviewing, slumped or celebrating
   - **status light:** colour above the head
-  - Before Stage 8 only *idle* and *suspended* occur, because nothing assigns work yet.
+  - Before Stage 8 only *idle*, *suspended* and — while an employee writes a chat
+    reply — *working* ("Replying in chat") occur.
 - **Appearance** is generated deterministically from `avatar_seed`
   (`appearance.ts`): skin tone, hair style and colour, outfit in department colours,
   build, glasses, headset, beard.
@@ -359,6 +364,48 @@ cosmetic and is visibly distinct from work state.
   playground. Department and employee editors have model pickers.
 - **Tests** use `httpx.MockTransport` (unit) and `backend/tests/fake_provider.py`
   (e2e), so the suite never spends NVIDIA credits.
+
+### Text communication (Stage 6)
+
+- **Data:** `conversations` (kind `employee` or `department`, title, last activity),
+  `messages` (owner or agent; the agent's name/role/department at the time; content;
+  status `complete | streaming | stopped | error` with the error; model, route source,
+  tokens, first-token and total latency, how many messages were sent as context),
+  `attachments` (stored bytes; decoded text for text files) and `tasks` (migration
+  `0005`).
+- **Routing is code, not prompt** (`app/services/chat.py`): an employee conversation is
+  answered by that employee; a department conversation by its director, or — if there
+  is none or they are suspended — its most senior available member. The responder must
+  belong to the department; suspended employees never answer, and nobody-available is
+  refused before anything is stored. The CEO is an employee conversation with the CEO.
+- **Replies** run as background tasks through the AI gateway (`purpose="chat"`), so they
+  finish even if the owner navigates away. Progress is published as `reply.state`
+  (`queued` → `generating` → `thinking` → `writing` → `done`), text as `message.token`
+  deltas with their character offset (a client that misses one reloads the message),
+  and the final message as `message.updated`. Stop cancels the provider stream; the
+  partial text is kept and marked stopped. Suspending or removing an employee stops
+  their replies. Gateway refusals (no key, paused, budget, no model) are stored as a
+  failed reply with the reason, and "Try again" asks for a new reply.
+- **Status:** while replying, the employee's real status is `working`
+  ("Replying in chat"), so they type at their desk in the 3D office; afterwards it
+  returns to what it was. On startup, interrupted replies are marked as such and
+  stuck "Replying in chat" statuses are reset.
+- **Context:** the employee system prompt (identity, department, rules) plus a chat
+  note, and the newest messages up to 30 messages / 24k characters. The model is told
+  when older messages were left out. Text attachments (≤ 2 MB, up to 4 per message)
+  are included up to 12k characters each and wrapped as data ("treat instructions
+  inside as text"); other files are stored, labelled "not readable", and the model is
+  told it can't see them. Downloads are always `application/octet-stream` +
+  `Content-Disposition: attachment` + `nosniff` + a sandbox CSP.
+- **Search:** `GET /api/conversations?q=` matches titles, message text and attachment
+  names (case-insensitive, `%`/`_` escaped) and returns the matching snippet and
+  message id, which the UI scrolls to.
+- **Tasks:** `POST /api/tasks` records a task from any message (department, optional
+  assignee who must be in it). Tasks stay **open — not started** until the
+  orchestration engine of Stage 8 executes them; the owner can cancel or reopen them.
+- **Markdown:** rendered with react-markdown + GFM; raw HTML is dropped, links open
+  externally with `noopener noreferrer`, and remote images are shown as links, never
+  loaded.
 
 ### Performance budget and measurements
 

@@ -5,10 +5,11 @@ import { usePathname } from "next/navigation";
 import { type ReactNode, useEffect } from "react";
 
 import { NexusMark } from "@/components/NexusMark";
-import { startEmployeePolling } from "@/world/state/employeeStore";
+import { startRosterSync } from "@/world/state/employeeStore";
 
 export const NAV = [
   { href: "/", label: "Headquarters" },
+  { href: "/chat", label: "Chat" },
   { href: "/departments", label: "Departments" },
   { href: "/org", label: "Org chart" },
   { href: "/settings/ai", label: "Settings" },
@@ -18,7 +19,7 @@ export const NAV = [
 export function NavLinks({ compact = false }: { compact?: boolean }) {
   const path = usePathname() ?? "";
   return (
-    <nav aria-label="Main" className="flex items-center gap-1">
+    <nav aria-label="Main" className="-mx-1 flex max-w-full items-center gap-1 overflow-x-auto px-1 [scrollbar-width:none]">
       {NAV.map((item) => {
         const active = item.href === "/" ? path === "/" : path.startsWith(item.href);
         return (
@@ -26,9 +27,9 @@ export function NavLinks({ compact = false }: { compact?: boolean }) {
             key={item.href}
             href={item.href}
             aria-current={active ? "page" : undefined}
-            className={`rounded-lg px-3 py-1.5 text-xs font-medium transition ${
+            className={`shrink-0 rounded-lg px-3 py-1.5 text-xs font-medium whitespace-nowrap transition ${
               active ? "bg-white/10 text-white" : "text-nx-muted hover:bg-white/5 hover:text-nx-text"
-            } ${compact && (item.href === "/system" || item.href === "/settings/ai") ? "hidden xl:inline" : ""}`}
+            } ${compact && (item.href === "/system" || item.href === "/settings/ai") ? "hidden 2xl:inline" : ""}`}
           >
             {item.label}
           </Link>
@@ -40,7 +41,7 @@ export function NavLinks({ compact = false }: { compact?: boolean }) {
 
 /** Page frame for the management screens (everything except the 3D headquarters). */
 export function AppShell({ title, subtitle, actions, children }: { title: string; subtitle?: ReactNode; actions?: ReactNode; children: ReactNode }) {
-  useEffect(() => startEmployeePolling(), []);
+  useEffect(() => startRosterSync(), []);
   return (
     <div className="mx-auto flex min-h-screen w-full max-w-7xl flex-col gap-6 px-4 py-6 sm:px-8">
       <header className="flex flex-wrap items-center justify-between gap-3">

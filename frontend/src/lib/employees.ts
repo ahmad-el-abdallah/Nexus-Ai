@@ -39,7 +39,8 @@ export class ApiError extends Error {
 
 export async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const headers: Record<string, string> = { Accept: "application/json" };
-  if (init?.body) headers["Content-Type"] = "application/json";
+  // FormData bodies (file uploads) set their own multipart boundary.
+  if (typeof init?.body === "string") headers["Content-Type"] = "application/json";
   const response = await fetch(path, { cache: "no-store", ...init, headers });
   if (response.status === 204) return undefined as T;
   const isJson = response.headers.get("content-type")?.includes("application/json");

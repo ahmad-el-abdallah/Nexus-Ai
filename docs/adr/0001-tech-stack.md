@@ -24,7 +24,7 @@ inference, email, speech) and strict security rules. Several constraints apply:
 | Database | **SQLite (WAL)** now; PostgreSQL supported via `NEXUS_DATABASE_URL` | Zero setup. The owner chose SQLite for development; production can use Postgres without code changes |
 | Logging | **structlog** with a redaction processor | Structured JSON for machines, readable console for humans, secrets masked centrally |
 | Config | **pydantic-settings**, secrets as `SecretStr` | Typed config; secrets can't leak through repr or serialization |
-| Frontend ↔ backend | Same-origin REST via Next `rewrites`; WebSocket direct to FastAPI (Stage 6) | No CORS for REST and no backend URL in the bundle. Rewrites can't proxy WebSockets |
+| Frontend ↔ backend | Same-origin REST via Next `rewrites`; live updates as Server-Sent Events through the same proxy (Stage 6) | No CORS and no backend URL in the bundle. SSE is plain HTTP, so it passes through the rewrite unchanged; updates only flow server → client |
 | Tests | pytest + httpx ASGI; Vitest + Testing Library; bash smoke test | Fast, hermetic unit and integration tests, plus a real two-server boot check |
 
 ## Deferred decisions
@@ -40,7 +40,11 @@ inference, email, speech) and strict security rules. Several constraints apply:
 - **Embeddings and vector search (Stage 13).** Options are SQLite with a vector
   extension, PostgreSQL with pgvector, or keyword-only retrieval when no embedding model
   is configured.
-- **Realtime transport details (Stage 6).** Native WebSocket vs SSE for token streaming.
+- **Realtime transport (decided in Stage 6): SSE.** One `EventSource` per tab on
+  `/api/events` through the Next.js proxy, with a 15 s heartbeat. Client actions stay on
+  REST. A WebSocket would need a direct connection to FastAPI plus origin and token
+  checks, and nothing needs client → server streaming yet. Revisit if voice (Stage 7)
+  needs bidirectional audio streaming.
 
 ## Consequences
 

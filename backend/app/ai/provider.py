@@ -109,7 +109,7 @@ class Completion:
 class StreamEvent:
     """A text delta, a reasoning signal (content hidden) or the final usage."""
 
-    kind: str  # "text" | "reasoning" | "done"
+    kind: str  # "started" (gateway only) | "text" | "reasoning" | "done"
     text: str = ""
     completion: Completion | None = None
 

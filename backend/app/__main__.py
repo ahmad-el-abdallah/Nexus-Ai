@@ -18,6 +18,8 @@ def main() -> None:
         port=settings.port,
         reload="--reload" in sys.argv[1:],
         reload_dirs=["app"],
+        # Live event streams stay open; don't let them block a reload or shutdown.
+        timeout_graceful_shutdown=3,
     )
 
 

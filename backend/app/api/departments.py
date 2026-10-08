@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -78,7 +78,9 @@ async def get_department(key: str, session: Session) -> DepartmentOut:
 
 
 @router.patch("/{key}", response_model=DepartmentOut)
-async def configure_department(key: str, patch: DepartmentPatch, session: Session) -> DepartmentOut:
+async def configure_department(
+    key: str, patch: DepartmentPatch, session: Session, request: Request
+) -> DepartmentOut:
     department = await session.get(Department, key)
     if department is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Department not found")
@@ -102,4 +104,5 @@ async def configure_department(key: str, patch: DepartmentPatch, session: Sessio
     except OrgError as error:
         await session.rollback()
         raise HTTPException(error.status, str(error)) from error
+    request.app.state.events.publish("roster.changed", {})
     return _out(department, (await _headcounts(session)).get(key, 0))

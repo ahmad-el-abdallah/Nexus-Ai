@@ -3,10 +3,12 @@
 import Link from "next/link";
 import { type FormEvent, useState } from "react";
 
+import { TaskBoard } from "@/components/chat/TaskBoard";
 import { EmployeeEditor } from "@/components/hq/EmployeeEditor";
 import { Initials, StatusBadge } from "@/components/hq/people";
 import type { Department } from "@/lib/departments";
 import type { Employee } from "@/lib/employees";
+import { chatHref } from "@/lib/routing";
 import { ROOMS, WORKSTATIONS } from "@/world/layout/building";
 import { ROOM_BY_ID } from "@/world/layout/queries";
 import { useDepartmentStore } from "@/world/state/departmentStore";
@@ -54,6 +56,9 @@ export function DepartmentPage({ departmentKey }: { departmentKey: string }) {
       subtitle={department.description}
       actions={
         <div className="flex flex-wrap gap-2">
+          <Link href={chatHref({ kind: "department", department: department.key })} className="rounded-xl px-4 py-2 text-sm text-nx-text ring-1 ring-nx-violet/60 hover:bg-nx-violet/20">
+            Message {department.name}
+          </Link>
           {room && (
             <Link href={`/?room=${room.id}`} className="rounded-xl px-4 py-2 text-sm text-nx-text ring-1 ring-nx-line-strong hover:bg-white/5">
               View office in 3D
@@ -168,16 +173,9 @@ export function DepartmentPage({ departmentKey }: { departmentKey: string }) {
           <h2 id="tasks-title" className={h2}>
             Task board
           </h2>
-          <p className="text-xs text-nx-faint">Tasks arrive with the orchestration engine (Stage 8).</p>
+          <p className="text-xs text-nx-faint">Tasks are recorded from chat; the orchestration engine that executes them arrives in Stage 8.</p>
         </div>
-        <div className="mt-3 grid grid-cols-2 gap-3 md:grid-cols-4">
-          {["Queued", "Running", "Review", "Done"].map((col) => (
-            <div key={col} className="min-h-24 rounded-xl bg-white/[0.02] p-3 ring-1 ring-nx-line">
-              <p className="text-[11px] tracking-wider text-nx-faint uppercase">{col} · 0</p>
-              <p className="mt-6 text-center text-xs text-nx-faint">No tasks</p>
-            </div>
-          ))}
-        </div>
+        <TaskBoard department={department.key} />
       </section>
 
       <div className="grid grid-cols-1 gap-6 xl:grid-cols-3">
@@ -187,7 +185,6 @@ export function DepartmentPage({ departmentKey }: { departmentKey: string }) {
             Arriving in later stages
           </h2>
           <ul className="mt-3 space-y-2 text-sm text-nx-muted">
-            <li>Department chat — Stage 6</li>
             <li>Performance dashboard — Stage 10 (no data yet)</li>
             <li>Department knowledge base — Stage 13</li>
           </ul>

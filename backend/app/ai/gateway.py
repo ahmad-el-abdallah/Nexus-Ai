@@ -82,7 +82,9 @@ class CallStats:
     http_status: int | None = None
 
 
-def system_prompt(employee: Employee, department: Department | None) -> str:
+def system_prompt(
+    employee: Employee, department: Department | None, context: str | None = None
+) -> str:
     lines = [
         f"You are {employee.name}, {employee.role} in the {department.name if department else employee.department} department of NEXUS AI,",
         "a company whose employees are AI agents working for its human owner.",
@@ -95,6 +97,8 @@ def system_prompt(employee: Employee, department: Department | None) -> str:
         "spend money or act outside it. Never invent facts, data or sources; say clearly when you don't know or when",
         "something is your assumption. Sensitive or external actions always need the owner's approval.",
     ]
+    if context:
+        lines.append(context)
     return "\n".join(lines)
 
 
@@ -331,9 +335,13 @@ class AIGateway:
         employee_id: str | None = None,
         model: str | None = None,
         purpose: str,
+        context: str | None = None,
     ) -> tuple[Route, AsyncIterator[StreamEvent]]:
         """Validates and routes first (errors raise before streaming starts),
-        then returns the route and an iterator of stream events."""
+        then returns the route and an iterator of stream events. The first event
+        is "started" once the request holds its concurrency slots (until then it
+        is queued behind other requests). `context` extends the employee's
+        system prompt."""
         cfg = await self.config(session)
         route = await self.resolve(session, cfg, employee_id, model)
         base = {
@@ -352,7 +360,10 @@ class AIGateway:
             raise
         if route.employee:
             messages = [
-                {"role": "system", "content": system_prompt(route.employee, route.department)},
+                {
+                    "role": "system",
+                    "content": system_prompt(route.employee, route.department, context),
+                },
                 *messages,
             ]
         max_tokens, temperature = cfg.max_output_tokens, cfg.temperature
@@ -361,6 +372,7 @@ class AIGateway:
             stats = CallStats()
             started = time.perf_counter()
             async with self._slots(cfg, route.department):
+                yield StreamEvent("started")
                 for attempt in range(MAX_RETRIES + 1):
                     produced = False
                     try:

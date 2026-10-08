@@ -1,7 +1,9 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useState } from "react";
 
+import { chatHref } from "@/lib/routing";
 import { STATUS_META } from "@/world/characters/status";
 import { officeWorld } from "@/world/characters/world";
 import { WORKSTATIONS } from "@/world/layout/building";
@@ -114,10 +116,16 @@ export function EmployeePanel() {
 
       <div className="mt-4 flex items-center justify-between gap-3 rounded-xl bg-white/[0.03] px-4 py-3 text-sm ring-1 ring-nx-line">
         <span className="shrink-0 text-nx-muted">Current task</span>
-        <span className="text-right text-nx-text">None — tasks arrive in Stage 8</span>
+        <span className="text-right text-nx-text">None — task execution arrives in Stage 8</span>
       </div>
 
       <div className="mt-5 flex flex-wrap items-center gap-2">
+        <Link
+          href={chatHref({ kind: "employee", employee_id: employee.id })}
+          className="rounded-lg bg-nx-violet/30 px-3 py-2 text-xs font-semibold text-white ring-1 ring-nx-violet/60 transition hover:bg-nx-violet/40"
+        >
+          Message
+        </Link>
         <button
           type="button"
           onClick={() => useOfficeStore.getState().selectEmployee(employee.id)}

@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -14,6 +14,7 @@ from app.api.ai import require_model
 from app.core.logging import get_logger
 from app.db.session import get_session
 from app.models import Employee, EmployeeStatus
+from app.schemas import EmployeeOut, dump
 from app.services.org import (
     EmployeeChanges,
     OrgError,
@@ -26,23 +27,6 @@ router = APIRouter(prefix="/api/employees", tags=["employees"])
 log = get_logger("nexus.employees")
 
 Session = Annotated[AsyncSession, Depends(get_session)]
-
-
-class EmployeeOut(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
-
-    id: str
-    name: str
-    role: str
-    department: str
-    seniority: str
-    desk_id: str | None
-    supervisor_id: str | None
-    model_id: str | None
-    avatar_seed: int
-    status: EmployeeStatus
-    status_detail: str | None
-    status_changed_at: datetime
 
 
 class EmployeeCreate(BaseModel):
@@ -68,6 +52,11 @@ class EmployeePatch(BaseModel):
     model_id: str | None = None
 
 
+def _roster_changed(request: Request) -> None:
+    """Tells live clients to reload the roster (several employees may have changed)."""
+    request.app.state.events.publish("roster.changed", {})
+
+
 def _org_error(error: OrgError) -> HTTPException:
     return HTTPException(error.status, str(error))
 
@@ -80,7 +69,11 @@ async def _get(session: AsyncSession, employee_id: str) -> Employee:
 
 
 async def _set_status(
-    session: AsyncSession, employee: Employee, new: EmployeeStatus, detail: str | None
+    request: Request,
+    session: AsyncSession,
+    employee: Employee,
+    new: EmployeeStatus,
+    detail: str | None,
 ) -> Employee:
     previous = employee.status
     employee.status = new.value
@@ -91,6 +84,7 @@ async def _set_status(
     log.info(
         "employee.status_changed", employee_id=employee.id, previous=previous, status=new.value
     )
+    request.app.state.events.publish("employee.updated", dump(EmployeeOut.model_validate(employee)))
     return employee
 
 
@@ -101,10 +95,10 @@ async def list_employees(session: Session) -> list[Employee]:
 
 
 @router.post("", response_model=EmployeeOut, status_code=status.HTTP_201_CREATED)
-async def hire_employee(body: EmployeeCreate, session: Session) -> Employee:
+async def hire_employee(body: EmployeeCreate, session: Session, request: Request) -> Employee:
     """Owner action: add a new AI employee (a configuration — no model runs yet)."""
     try:
-        return await create_employee(
+        employee = await create_employee(
             session,
             name=body.name,
             department_key=body.department,
@@ -116,10 +110,14 @@ async def hire_employee(body: EmployeeCreate, session: Session) -> Employee:
     except OrgError as error:
         await session.rollback()
         raise _org_error(error) from error
+    _roster_changed(request)
+    return employee
 
 
 @router.patch("/{employee_id}", response_model=EmployeeOut)
-async def edit_employee(employee_id: str, body: EmployeePatch, session: Session) -> Employee:
+async def edit_employee(
+    employee_id: str, body: EmployeePatch, session: Session, request: Request
+) -> Employee:
     """Owner action: rename, change role, move department, re-seat or re-report."""
     employee = await _get(session, employee_id)
     fields = body.model_fields_set
@@ -137,14 +135,16 @@ async def edit_employee(employee_id: str, body: EmployeePatch, session: Session)
         supervisor_set="supervisor_id" in fields,
     )
     try:
-        return await update_employee(session, employee, changes)
+        employee = await update_employee(session, employee, changes)
     except OrgError as error:
         await session.rollback()
         raise _org_error(error) from error
+    _roster_changed(request)
+    return employee
 
 
 @router.delete("/{employee_id}", status_code=status.HTTP_204_NO_CONTENT)
-async def remove_employee(employee_id: str, session: Session) -> None:
+async def remove_employee(employee_id: str, session: Session, request: Request) -> None:
     """Owner action: remove an employee. Their reports move up to their manager."""
     employee = await _get(session, employee_id)
     try:
@@ -152,6 +152,8 @@ async def remove_employee(employee_id: str, session: Session) -> None:
     except OrgError as error:
         await session.rollback()
         raise _org_error(error) from error
+    await request.app.state.chat.stop_employee(employee_id)
+    _roster_changed(request)
 
 
 @router.get("/{employee_id}", response_model=EmployeeOut)
@@ -160,18 +162,23 @@ async def get_employee(employee_id: str, session: Session) -> Employee:
 
 
 @router.post("/{employee_id}/suspend", response_model=EmployeeOut)
-async def suspend_employee(employee_id: str, session: Session) -> Employee:
-    """Owner action: take an employee out of service (reversible)."""
+async def suspend_employee(employee_id: str, session: Session, request: Request) -> Employee:
+    """Owner action: take an employee out of service (reversible). Replies they
+    are writing are stopped."""
     employee = await _get(session, employee_id)
     if employee.status == EmployeeStatus.SUSPENDED:
         raise HTTPException(status.HTTP_409_CONFLICT, "Employee is already suspended")
-    return await _set_status(session, employee, EmployeeStatus.SUSPENDED, "Suspended by the owner")
+    employee = await _set_status(
+        request, session, employee, EmployeeStatus.SUSPENDED, "Suspended by the owner"
+    )
+    await request.app.state.chat.stop_employee(employee_id)
+    return employee
 
 
 @router.post("/{employee_id}/activate", response_model=EmployeeOut)
-async def activate_employee(employee_id: str, session: Session) -> Employee:
+async def activate_employee(employee_id: str, session: Session, request: Request) -> Employee:
     """Owner action: return a suspended employee to service as idle."""
     employee = await _get(session, employee_id)
     if employee.status != EmployeeStatus.SUSPENDED:
         raise HTTPException(status.HTTP_409_CONFLICT, "Only suspended employees can be activated")
-    return await _set_status(session, employee, EmployeeStatus.IDLE, None)
+    return await _set_status(request, session, employee, EmployeeStatus.IDLE, None)

@@ -4,6 +4,7 @@ import Link from "next/link";
 
 import { WORKSTATIONS } from "@/world/layout/building";
 import { FLOOR_BY_ID, ROOM_BY_ID, roomStats } from "@/world/layout/queries";
+import { chatHref } from "@/lib/routing";
 import { useDepartmentStore } from "@/world/state/departmentStore";
 import { useEmployeeStore } from "@/world/state/employeeStore";
 import { useOfficeStore } from "@/world/state/officeStore";
@@ -74,6 +75,13 @@ export function RoomPanel() {
                 style={{ color: d.color, borderColor: d.color }}
               >
                 {d.name} department →
+              </Link>
+            ))}
+          {departments
+            .filter((d) => d.room_id === room.id)
+            .map((d) => (
+              <Link key={`chat-${d.key}`} href={chatHref({ kind: "department", department: d.key })} className="rounded-full bg-nx-violet/20 px-2.5 py-1 font-medium text-nx-text ring-1 ring-nx-violet/50 hover:bg-nx-violet/30">
+                Message {d.name}
               </Link>
             ))}
         </p>

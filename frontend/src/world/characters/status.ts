@@ -22,13 +22,14 @@ export interface StatusMeta {
 }
 
 /**
- * How each real status is shown in the office. Statuses other than idle and
- * suspended are set only by the task system (Stage 8+); nothing here invents them.
+ * How each real status is shown in the office. "working" is set while an
+ * employee writes a chat reply (Stage 6); the other working states are set only
+ * by the task system (Stage 8+). Nothing here invents them.
  */
 export const STATUS_META: Record<EmployeeStatus, StatusMeta> = {
   idle: { label: "Idle", color: "#94a3b8", description: "Available — no work assigned.", location: "desk", activity: "sitIdle" },
   assigned: { label: "Assigned", color: "#38bdf8", description: "Has received a task that hasn't started yet.", location: "desk", activity: "sitIdle" },
-  working: { label: "Working", color: "#34d399", description: "Executing an assigned task.", location: "desk", activity: "sitTyping" },
+  working: { label: "Working", color: "#34d399", description: "Working — replying in chat or executing a task.", location: "desk", activity: "sitTyping" },
   researching: { label: "Researching", color: "#22d3ee", description: "Gathering information for a task.", location: "desk", activity: "sitThinking" },
   meeting: { label: "In a meeting", color: "#818cf8", description: "Taking part in a meeting.", location: "meeting", activity: "sitTalking" },
   reviewing: { label: "Reviewing", color: "#a78bfa", description: "Reviewing another employee's work.", location: "desk", activity: "sitReviewing" },

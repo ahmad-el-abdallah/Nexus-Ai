@@ -153,7 +153,7 @@ describe("EmployeePanel", () => {
     expect(screen.getByTestId("employee-status")).toHaveTextContent("Idle");
     expect(panel).toHaveTextContent("Sales · desk 2");
     expect(panel).toHaveTextContent("AI modelNone selected");
-    expect(panel).toHaveTextContent("None — tasks arrive in Stage 8");
+    expect(panel).toHaveTextContent("None — task execution arrives in Stage 8");
   });
 
   it("suspends through the backend and reflects the saved status", async () => {

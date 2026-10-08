@@ -1,6 +1,13 @@
 import { CURRENT_STAGE, STAGES } from "@/lib/stages";
 
 const NEXT_STAGE_SCOPE: Record<number, string[]> = {
+  7: [
+    "Microphone controls and speech-to-text with a transcript preview",
+    "Voice messages to employees and spoken replies",
+    "Arabic and English where the speech engine supports them",
+    "Mute and voice-session controls; text stays the fallback",
+    "Free / local-compatible speech technology",
+  ],
   6: [
     "Chat with the CEO, a department or any employee",
     "Streaming replies with conversation history",

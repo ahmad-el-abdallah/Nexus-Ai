@@ -10,7 +10,7 @@ import { useSystemStatus } from "@/hooks/useSystemStatus";
 import { detectWebGL } from "@/lib/webgl";
 import { STATUS_META } from "@/world/characters/status";
 import { FloorPlan2D } from "@/world/plan2d/FloorPlan2D";
-import { startEmployeePolling, useEmployeeStore } from "@/world/state/employeeStore";
+import { startRosterSync, useEmployeeStore } from "@/world/state/employeeStore";
 import { type Quality, useOfficeStore } from "@/world/state/officeStore";
 
 import { NavLinks } from "@/components/org/AppShell";
@@ -70,7 +70,7 @@ function StaffChip() {
   return (
     <span
       data-testid="staff-chip"
-      className="hidden h-10 items-center gap-2 rounded-xl bg-nx-bg/70 px-3 text-xs text-nx-muted ring-1 ring-nx-line-strong backdrop-blur-md xl:flex"
+      className="hidden h-10 shrink-0 items-center gap-2 rounded-xl bg-nx-bg/70 px-3 text-xs whitespace-nowrap text-nx-muted ring-1 ring-nx-line-strong backdrop-blur-md xl:flex"
       title="AI employees by current status"
     >
       <span className="font-semibold text-nx-text">{employees.length} AI employees</span>
@@ -97,7 +97,7 @@ export function Headquarters() {
   const webgl = useOfficeStore((s) => s.webgl);
   const selected = useOfficeStore((s) => s.selectedRoomId ?? s.selectedEmployeeId);
 
-  useEffect(() => startEmployeePolling(), []);
+  useEffect(() => startRosterSync(), []);
 
   // Capability detection and URL options (?view=2d, ?quality=high|balanced|low, ?perf).
   useEffect(() => {

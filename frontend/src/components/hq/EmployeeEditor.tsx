@@ -140,7 +140,7 @@ export function EmployeeEditor({ employee, department, onClose, onSaved, onDelet
         <p className="mt-1 text-xs text-nx-faint">
           {employee
             ? "Changes apply immediately and are saved to the database."
-            : "Creates the employee's configuration. No AI model runs until the NVIDIA connection (Stage 5)."}
+            : "Creates the employee's configuration. They can be messaged in Chat straight away."}
         </p>
 
         <div className="mt-5 grid grid-cols-1 gap-4 sm:grid-cols-2">

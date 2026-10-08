@@ -116,6 +116,25 @@ docs/      architecture, development, stages, ADRs, design references
   logs "Attempted to synchronously unmount a root" for the room labels. It doesn't
   happen in production builds, and the e2e tests run against production.
 
+## Chat and live updates
+
+- **Chat** lives at `/chat`. Deep links: `/chat?to=employee:<id>`,
+  `/chat?to=department:<key>` (a new conversation, created on the first send),
+  `/chat?c=<conversation id>&m=<message id>` (open and highlight a message).
+- **API:** `GET/POST /api/conversations` (`?q=` searches titles, messages and file
+  names), `PATCH/DELETE /api/conversations/{id}`, `GET/POST …/{id}/messages`
+  (multipart: `content` + `files`), `POST …/{id}/reply` (try again), `POST …/{id}/stop`,
+  `GET /api/attachments/{id}` (always a download), `GET/POST /api/tasks`,
+  `PATCH /api/tasks/{id}`.
+- **Live events:** `GET /api/events` is a Server-Sent Events stream
+  (`curl -N localhost:3000/api/events` to watch it). Events: `employee.updated`,
+  `roster.changed`, `conversation.updated|deleted`, `message.created|updated`,
+  `message.token`, `reply.state`, `task.updated`, plus a `: ping` every 15 s. The
+  backend ends open streams when it is asked to exit, so `--reload` stays fast.
+- **Every reply is a real model request** that counts against the daily budgets. The
+  tests never call NVIDIA: unit tests use `httpx.MockTransport`, e2e uses
+  `backend/tests/fake_provider.py`.
+
 ## Database and migrations
 
 - Models live in `backend/app/models/`. Import each new model module in

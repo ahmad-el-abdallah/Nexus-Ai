@@ -9,8 +9,8 @@ reported, and the next stage starts only after the owner's explicit approval.
 | 2 | High-quality 3D office world | ✅ Approved |
 | 3 | AI employee characters | ✅ Approved |
 | 4 | Departments & organisational structure | ✅ Approved |
-| 5 | NVIDIA AI connection | ✅ Complete, awaiting approval for Stage 6 |
-| 6 | Text communication | ⏳ Not started |
+| 5 | NVIDIA AI connection | ✅ Approved |
+| 6 | Text communication | ✅ Complete, awaiting approval for Stage 7 |
 | 7 | Voice communication | ⏳ Not started |
 | 8 | Multi-agent task orchestration | ⏳ Not started |
 | 9 | Email integration | ⏳ Not started |
@@ -137,3 +137,41 @@ reported, and the next stage starts only after the owner's explicit approval.
   (and 3 others probed earlier).
 - Several of these are reasoning models that spend output tokens on hidden reasoning; the UI
   explains empty replies instead of failing silently.
+
+---
+
+## Stage 6 — Text communication
+
+**Completed:** 2026-10-08 · **Commit:** "Stage 6: text communication"
+
+### Acceptance criteria
+
+| Criterion | Result | Evidence |
+| --- | --- | --- |
+| Owner can message Marketing | PASS | e2e: "Message Marketing" → Elena Rossi (director) replies, streamed and saved; real NVIDIA reply too |
+| Owner can message Engineering | PASS | e2e: Software Engineering → Iris Wong; real NVIDIA reply |
+| Owner can message the CEO | PASS | e2e: "Message the CEO" → Aria Vance; real NVIDIA reply |
+| Correct agents respond | PASS | Backend routing tests (director, most-senior fallback, suspended, nobody available); usage rows carry the right department |
+| Conversations persist | PASS | Stored in SQLite; e2e reload; restart recovery test |
+| Messages are not routed to the wrong department | PASS | Parametrised test over Marketing / Engineering / Sales; responder must be a department member (checked in code) |
+
+### Deliverables
+
+- Chat page (`/chat`): conversation list with search, CEO/department/people picker,
+  Markdown messages with author, timestamps, model and real token/latency figures,
+  streaming with honest progress (waiting for a slot / request sent / thinking / writing),
+  stop, try again, rename, delete, attachments (text read by the model, others labelled)
+- Background replies through the AI gateway; context window of the newest messages
+- Live updates over Server-Sent Events (`/api/events`) replacing the 5 s roster poll
+  (polling only while disconnected); employees show **Working — Replying in chat** and
+  type at their desks in the 3D office while replying
+- Tasks recorded from any message, shown on the department task board as
+  "open — not started" (execution is Stage 8); cancel / reopen
+- "Message" shortcuts on the employee panel, room panel and department pages
+- Migration `0005_chat`
+
+### Real-account check (owner's key, on a copy of the dev database)
+
+Three real requests on `nvidia/nemotron-3-super-120b-a12b`: Marketing → Elena Rossi
+(first token 898 ms, 3.2 s total), Software Engineering → Iris Wong (860 ms, 1.6 s),
+CEO → Aria Vance (698 ms, 2.8 s). Each reply introduced the right person and department.

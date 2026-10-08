@@ -11,6 +11,8 @@ import {
   updateEmployee,
 } from "@/lib/employees";
 
+import { liveEvents } from "@/lib/events";
+
 import { useDepartmentStore } from "./departmentStore";
 
 export const EMPLOYEE_POLL_MS = 5_000;
@@ -25,6 +27,8 @@ export interface EmployeeState {
   pending: Record<string, boolean>;
   actionError: Record<string, string>;
   refresh: () => Promise<void>;
+  /** Applies a live update for one employee. */
+  upsert: (employee: Employee) => void;
   setAvailability: (id: string, action: "suspend" | "activate") => Promise<void>;
   /** Owner actions; they throw with the backend's message when a rule is broken. */
   hire: (draft: EmployeeDraft) => Promise<Employee>;
@@ -55,6 +59,12 @@ export const useEmployeeStore = create<EmployeeState>((set, get) => ({
     } catch (error) {
       set({ load: "error", error: (error as Error).message });
     }
+  },
+
+  upsert: (employee) => {
+    const list = get().employees;
+    const exists = list.some((e) => e.id === employee.id);
+    set({ employees: exists ? replace(list, employee) : [...list, employee] });
   },
 
   hire: async (draft) => {
@@ -96,19 +106,32 @@ export const useEmployeeStore = create<EmployeeState>((set, get) => ({
   },
 }));
 
-/** Starts polling the roster and departments; returns a stop function. */
-export function startEmployeePolling(intervalMs = EMPLOYEE_POLL_MS): () => void {
-  const tick = () => {
-    if (typeof document !== "undefined" && document.visibilityState === "hidden") return;
+/**
+ * Keeps the roster and departments current: live updates over /api/events,
+ * with polling only while the live connection is down. Returns a stop function.
+ */
+export function startRosterSync(intervalMs = EMPLOYEE_POLL_MS): () => void {
+  const refreshAll = () => {
     void useEmployeeStore.getState().refresh();
     void useDepartmentStore.getState().refresh();
   };
-  tick();
-  const timer = setInterval(tick, intervalMs);
-  const onVisible = () => document.visibilityState === "visible" && tick();
+  const release = liveEvents.retain();
+  const off = [
+    liveEvents.on("employee.updated", (data) => useEmployeeStore.getState().upsert(data as Employee)),
+    liveEvents.on("roster.changed", refreshAll),
+    liveEvents.onStatus((_status, reconnected) => reconnected && refreshAll()),
+  ];
+  refreshAll();
+  const hidden = () => typeof document !== "undefined" && document.visibilityState === "hidden";
+  const timer = setInterval(() => {
+    if (!hidden() && liveEvents.status !== "open") refreshAll();
+  }, intervalMs);
+  const onVisible = () => !hidden() && refreshAll();
   document.addEventListener("visibilitychange", onVisible);
   return () => {
     clearInterval(timer);
     document.removeEventListener("visibilitychange", onVisible);
+    off.forEach((f) => f());
+    release();
   };
 }

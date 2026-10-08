@@ -7,11 +7,11 @@ interactive 3D headquarters. Every department, employee, desk and meeting room m
 real system functionality: real tasks, real model calls, real approvals. Nothing on
 screen is simulated.
 
-> **Status: Stage 5 of 16 — NVIDIA AI connection.** A secure AI gateway connects to
-> NVIDIA's hosted models with streaming, verified model catalogue, per-department and
-> per-employee routing, retries, budgets, concurrency limits, an emergency stop and usage
-> tracking. Configure it in **Settings → AI providers**. Chat arrives in Stage 6. See
-> [`docs/STAGES.md`](docs/STAGES.md).
+> **Status: Stage 6 of 16 — Text communication.** Chat with the CEO, any department or
+> any employee in **Chat**: replies stream from each employee's routed NVIDIA model, are
+> saved and searchable, can carry file attachments and can be turned into tasks. Routing
+> is enforced by the backend, and the office updates live (employees type at their desks
+> while replying). Voice arrives in Stage 7. See [`docs/STAGES.md`](docs/STAGES.md).
 
 ## Quick start
 

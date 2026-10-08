@@ -83,12 +83,23 @@ check "GET /system"           200 "$WEB/system"           'System status'
 check "GET /departments"      200 "$WEB/departments"      'Departments'
 check "GET /org"              200 "$WEB/org"              'Org chart'
 check "GET /settings/ai"      200 "$WEB/settings/ai"      'Settings'
+check "GET /chat"             200 "$WEB/chat"             'Chat'
 
 echo "Frontend → backend proxy:"
 check "GET /api/health/ready" 200 "$WEB/api/health/ready" 'x-request-id'
 check "GET /api/system/info"  200 "$WEB/api/system/info"  '"name":"NEXUS AI"'
 check "GET /api/departments"  200 "$WEB/api/departments"  '"key":"knowledge"'
 check "GET /api/ai/settings"  200 "$WEB/api/ai/settings"  '"provider":"nvidia"'
+check "GET /api/conversations" 200 "$WEB/api/conversations" '^\['
+check "GET /api/tasks"        200 "$WEB/api/tasks"        '^\['
+# The live event stream never ends by itself: read its first event, then hang up.
+events="$(curl -sN --max-time 3 "$WEB/api/events" || true)"
+if grep -q '^event: ready' <<<"$events"; then
+  printf '  \033[32mPASS\033[0m  %s\n' "GET /api/events (live stream through the proxy)"
+else
+  printf '  \033[31mFAIL\033[0m  %s\n' "GET /api/events (no ready event through the proxy)"
+  failures=$((failures + 1))
+fi
 
 echo "Backend stopped (proxy must not pretend it is healthy):"
 kill_tree "$API_PID"; wait "$API_PID" 2>/dev/null || true; API_PID=

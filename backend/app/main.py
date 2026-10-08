@@ -12,15 +12,29 @@ from datetime import UTC, datetime
 import httpx
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from sqlalchemy import text
 
 from app.ai.gateway import AIGateway
-from app.api import ai, departments, employees, health
+from app.api import ai, chat, departments, employees, events, health, tasks
 from app.core.config import APP_VERSION, Settings, get_settings
+from app.core.events import EventBus, install_shutdown_hook
 from app.core.logging import configure_logging, get_logger
 from app.core.middleware import RequestContextMiddleware
 from app.db.session import Database
+from app.services.chat import ChatService
 
 log = get_logger("nexus.app")
+install_shutdown_hook()
+
+
+async def _schema_ready(database: Database) -> bool:
+    """Startup housekeeping only runs on a migrated database (readiness reports the rest)."""
+    try:
+        async with database.engine.connect() as connection:
+            await connection.execute(text("SELECT 1 FROM messages LIMIT 1"))
+        return True
+    except Exception:  # missing tables or an unreachable database
+        return False
 
 
 def create_app(
@@ -35,6 +49,8 @@ def create_app(
         app.state.settings = settings
         app.state.db = Database(settings.database_url)
         app.state.ai = AIGateway(app.state.db, settings, transport=ai_transport)
+        app.state.events = EventBus()
+        app.state.chat = ChatService(app.state.db, app.state.ai, app.state.events)
         app.state.started_at = datetime.now(UTC)
         log.info(
             "app.startup",
@@ -46,9 +62,13 @@ def create_app(
         )
         if settings.secret_key is None:
             log.warning("app.secret_key_missing", hint="Run `make setup` to generate backend/.env")
+        if await _schema_ready(app.state.db):
+            await app.state.chat.recover()
         try:
             yield
         finally:
+            app.state.events.close()
+            await app.state.chat.shutdown()
             await app.state.db.dispose()
             log.info("app.shutdown")
 
@@ -72,4 +92,7 @@ def create_app(
     app.include_router(employees.router)
     app.include_router(departments.router)
     app.include_router(ai.router)
+    app.include_router(chat.router)
+    app.include_router(tasks.router)
+    app.include_router(events.router)
     return app
