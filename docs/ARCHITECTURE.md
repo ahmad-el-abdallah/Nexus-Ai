@@ -251,6 +251,42 @@ cosmetic and is visibly distinct from work state.
 - **Interaction.** Room floors are the only raycast targets; everything else opts out.
   Clicks are distinguished from pans by pointer travel.
 
+### AI employees in the office (Stage 3)
+
+- **Source of truth.** Employees live in the backend `employees` table:
+  - id, name, role, department, seniority, desk, avatar seed, status, status detail,
+    and when the status last changed
+  - migration `0002` seeds 19 staff
+  - `GET /api/employees`, plus owner-only `POST …/suspend` and `…/activate`
+  - the frontend polls the roster every 5 s (WebSockets replace this in Stage 6)
+- **Status drives location and pose** (`world/characters/status.ts`):
+  - **location:** desk, meeting room or away
+  - **pose:** idle, typing, thinking, talking, reviewing, slumped or celebrating
+  - **status light:** colour above the head
+  - Before Stage 8 only *idle* and *suspended* occur, because nothing assigns work yet.
+- **Appearance** is generated deterministically from `avatar_seed`
+  (`appearance.ts`): skin tone, hair style and colour, outfit in department colours,
+  build, glasses, headset, beard.
+- **Rig** (`rig.ts`): rigid body parts on joints, with procedural poses and a walk
+  cycle. Joint matrices are computed without allocation.
+- **Rendering** (`scene/Characters.tsx`):
+  - each body part (and each hair or outfit variant) is one instanced mesh shared by
+    all employees
+  - name tags come from one texture atlas rendered as constant-size billboards
+  - invisible instanced hitboxes handle picking
+  - characters use blob shadows instead of the shadow map
+- **Behaviour** (`controller.ts`, `navigation.ts`): a per-employee state machine
+  (seated, standing up, walking, sitting down, using the elevator, away) with A*
+  routes on walkability grids rasterised from the layout.
+  - Suspending sends the person out through the elevator; activating brings them back.
+- **Ambient life** is decorative and optional:
+  - idle people may take short breaks (at most 2 at once)
+  - idle breathing runs at 15 fps
+  - it is labelled "(ambient)" in the UI and never changes a status
+  - it turns off with the *Ambient* toggle or `prefers-reduced-motion`
+- **Character studio** (`/characters`) previews every pose on generated sample people
+  and is labelled as not live data.
+
 ### Performance budget and measurements
 
 
@@ -285,7 +321,25 @@ Stage 2 measurements were taken on the development machine (Intel UHD CML GT2,
 | **Balanced (default)** | **48.6** | 18.9 ms | 28.1 ms | 171 | 161k |
 | High (+ ambient occlusion) | 28.2 | 34 ms | 44.9 ms | 222 | 162k |
 
-When nothing moves, no frames are drawn at all. While the camera moves, adaptive DPR
+**Stage 3 measurements.** These were taken while the owner's own Chrome was also
+rendering on the same integrated GPU, so absolute numbers are lower than Stage 2's.
+The A/B pair below ran under identical conditions (uncapped, 1080p, orbiting):
+
+| Configuration | Low p50 | Balanced p50 |
+| --- | --- | --- |
+| Building without people (`?people=off`) | 11.8 ms | 14.4 ms |
+| With 19 animated employees | 12.1 ms | 15.5 ms |
+
+**Shader-variant fix.** Profiling found three.js re-evaluating shader parameters on
+nearly every glass draw. Two causes:
+- double-sided transparent materials render in two passes and toggle
+  `material.side` (which sets `needsUpdate`)
+- shared materials were used by plain, instanced and instance-coloured meshes alike
+
+Glass now uses `forceSinglePass`, and each usage gets its own material. Shadow
+receiving is now consistent per finish.
+
+When nothing moves, no frames are drawn at all (with *Ambient* off). While the camera moves, adaptive DPR
 lowers the resolution (down to 0.6×) and restores full sharpness when it stops. High
 quality is intended for discrete GPUs.
 

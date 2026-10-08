@@ -7,7 +7,9 @@ import { Box3, type OrthographicCamera, Vector3 } from "three";
 
 import { DEFAULT_AZIMUTH, DEFAULT_POLAR, fitBox, hudInsets, MAX_POLAR, MIN_POLAR, orientationFor } from "../camera/fit";
 import { SITE_BOUNDS } from "../layout/building";
+import { officeWorld } from "../characters/world";
 import { FLOOR_BY_ID, ROOM_BY_ID } from "../layout/queries";
+import { cameraInfo } from "./runtime";
 import { type CameraRequest, useOfficeStore } from "../state/officeStore";
 
 const { ACTION } = CameraControlsImpl;
@@ -34,7 +36,7 @@ export function CameraRig() {
       if (!controls) return;
       const state = useOfficeStore.getState();
       const viewport = { width: size.width, height: size.height };
-      const insets = hudInsets(size.width, size.height, state.selectedRoomId !== null);
+      const insets = hudInsets(size.width, size.height, state.selectedRoomId !== null || state.selectedEmployeeId !== null);
       const current = orientationFor(controls.azimuthAngle, controls.polarAngle);
 
       const frame = (box: Box3, orientation = current, padding = 24) => {
@@ -46,6 +48,7 @@ export function CameraRig() {
       const overview = () => {
         const fit = fitBox(SITE_BOX, orientationFor(DEFAULT_AZIMUTH, DEFAULT_POLAR), viewport, insets, 16);
         overviewZoom.current = fit.zoom;
+        cameraInfo.overviewZoom = fit.zoom;
         controls.minZoom = fit.zoom * 0.55;
         controls.maxZoom = fit.zoom * 8;
         void controls.rotateTo(DEFAULT_AZIMUTH, DEFAULT_POLAR, animate);
@@ -76,6 +79,13 @@ export function CameraRig() {
           const floor = FLOOR_BY_ID.get(room.floor)!;
           const { x0, z0, x1, z1 } = room.rect;
           frame(new Box3(new Vector3(x0, floor.elevation, z0), new Vector3(x1, floor.elevation + 2.4, z1)), current, 40);
+          lastFit.current = req;
+          break;
+        }
+        case "employee": {
+          const c = officeWorld.residents.get(req.employeeId)?.controller;
+          if (!c || !c.visible) return;
+          frame(new Box3(new Vector3(c.x - 2.2, c.elevation, c.z - 2.2), new Vector3(c.x + 2.2, c.elevation + 1.8, c.z + 2.2)), current, 40);
           lastFit.current = req;
           break;
         }
@@ -171,6 +181,7 @@ export function CameraRig() {
           return;
         case "Escape":
           store.selectRoom(null);
+          store.selectEmployee(null);
           return;
         default:
           return;
@@ -196,6 +207,22 @@ export function CameraRig() {
         return { zoom: camera.zoom, azimuth: c?.azimuthAngle ?? 0, polar: c?.polarAngle ?? 0, target: target.toArray(), overviewZoom: overviewZoom.current };
       },
       /** Screen position (CSS px, relative to the canvas) of a room's floor centre. */
+      employees: () =>
+        [...officeWorld.residents.values()].map((r) => ({
+          id: r.employee.id,
+          name: r.employee.name,
+          status: r.employee.status,
+          mode: r.controller.mode,
+          doing: r.controller.doing,
+          floor: r.controller.floor,
+          visible: r.controller.visible,
+        })),
+      projectEmployee: (id: string) => {
+        const c = officeWorld.residents.get(id)?.controller;
+        if (!c || !c.visible) return null;
+        const p = new Vector3(c.x, c.elevation + 0.9, c.z).project(camera);
+        return { x: ((p.x + 1) / 2) * size.width, y: ((1 - p.y) / 2) * size.height };
+      },
       projectRoom: (id: string) => {
         const room = ROOM_BY_ID.get(id);
         if (!room) return null;
@@ -205,6 +232,7 @@ export function CameraRig() {
       },
       actions: {
         selectRoom: (id: string | null) => useOfficeStore.getState().selectRoom(id),
+        selectEmployee: (id: string | null) => useOfficeStore.getState().selectEmployee(id),
         setActiveFloor: (f: "all" | "L1" | "L2") => useOfficeStore.getState().setActiveFloor(f),
         resetView: () => useOfficeStore.getState().resetView(),
       },

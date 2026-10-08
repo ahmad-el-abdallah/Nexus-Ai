@@ -104,6 +104,12 @@ docs/      architecture, development, stages, ADRs, design references
   - `?perf` shows renderer statistics
   - `?bench=1` orbits continuously and publishes `window.__NEXUS_BENCH__`
   - `?nowebgl` simulates a browser without WebGL
+  - `?ambient=off` disables decorative idle motion
+  - `?people=off` hides the employees (benchmark comparison)
+- **Employees** come from the backend (`/api/employees`). With the backend offline, the
+  office shows no people and the HUD says "Roster unavailable"; nothing is invented.
+  `make test-e2e` starts its own backend on port 18200 with a throwaway database and
+  builds into `.next-e2e`, so it never touches your dev data or build.
 - **Diagnostics:** `window.__NEXUS_PERF__` holds live renderer counters.
   `window.__NEXUS_OFFICE__` exposes read-only state, the camera and a few test actions.
 - **Dev mode noise.** React Strict Mode double-mounts the canvas in development. This

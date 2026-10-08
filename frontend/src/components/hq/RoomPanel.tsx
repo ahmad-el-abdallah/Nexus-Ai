@@ -1,7 +1,11 @@
 "use client";
 
+import { WORKSTATIONS } from "@/world/layout/building";
 import { FLOOR_BY_ID, ROOM_BY_ID, roomStats } from "@/world/layout/queries";
+import { useEmployeeStore } from "@/world/state/employeeStore";
 import { useOfficeStore } from "@/world/state/officeStore";
+
+import { Initials, StatusBadge } from "./people";
 
 const KIND_LABEL = {
   department: "Department office",
@@ -14,10 +18,16 @@ const KIND_LABEL = {
 export function RoomPanel() {
   const roomId = useOfficeStore((s) => s.selectedRoomId);
   const selectRoom = useOfficeStore((s) => s.selectRoom);
+  const selectEmployee = useOfficeStore((s) => s.selectEmployee);
+  const employees = useEmployeeStore((s) => s.employees);
+  const rosterLoad = useEmployeeStore((s) => s.load);
   const room = roomId ? ROOM_BY_ID.get(roomId) : undefined;
   if (!room) return null;
   const stats = roomStats(room.id);
   const floor = FLOOR_BY_ID.get(room.floor)!;
+  const desks = new Set(WORKSTATIONS.filter((w) => w.room === room.id).map((w) => w.id));
+  const team = employees.filter((e) => e.desk_id && desks.has(e.desk_id));
+  const active = team.filter((e) => e.status !== "suspended" && e.status !== "idle").length;
 
   const facts: Array<[string, string]> = [
     ["Floor", floor.shortName],
@@ -59,18 +69,47 @@ export function RoomPanel() {
       </dl>
 
       {room.kind !== "amenity" && (
-        <section className="mt-5 space-y-2 text-sm">
-          <div className="flex items-center justify-between rounded-xl bg-white/[0.03] px-4 py-3 ring-1 ring-nx-line">
-            <span className="text-nx-muted">Team</span>
-            <span className="text-nx-text">No AI employees assigned yet</span>
-          </div>
+        <section className="mt-5 space-y-2 text-sm" aria-label="Team">
+          {room.kind !== "meeting" && (
+            <div className="rounded-xl bg-white/[0.03] ring-1 ring-nx-line">
+              <p className="flex items-center justify-between px-4 pt-3 text-nx-muted">
+                <span>Team</span>
+                <span className="font-mono text-xs text-nx-faint">
+                  {team.length} of {desks.size} desks filled
+                </span>
+              </p>
+              {team.length === 0 ? (
+                <p className="px-4 py-3 text-nx-text">
+                  {rosterLoad === "error" ? "Roster unavailable (backend offline)" : "No AI employees assigned yet"}
+                </p>
+              ) : (
+                <ul className="py-1.5">
+                  {team.map((e) => (
+                    <li key={e.id}>
+                      <button
+                        type="button"
+                        onClick={() => selectEmployee(e.id)}
+                        className="flex w-full items-center gap-3 px-4 py-2 text-left transition hover:bg-white/[0.04]"
+                      >
+                        <Initials employee={e} size="size-8" />
+                        <span className="min-w-0 flex-1">
+                          <span className="block truncate text-nx-text">{e.name}</span>
+                          <span className="block truncate text-xs text-nx-faint">{e.role}</span>
+                        </span>
+                        <StatusBadge employee={e} />
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          )}
           <div className="flex items-center justify-between rounded-xl bg-white/[0.03] px-4 py-3 ring-1 ring-nx-line">
             <span className="text-nx-muted">Activity</span>
-            <span className="text-nx-text">{room.kind === "meeting" ? "No meetings scheduled" : "No active work"}</span>
+            <span className="text-nx-text">
+              {room.kind === "meeting" ? "No meetings scheduled" : active > 0 ? `${active} working` : "No active work"}
+            </span>
           </div>
-          <p className="pt-1 text-xs text-nx-faint">
-            AI employees take their desks in Stage 3. Departments get their configuration in Stage 4.
-          </p>
         </section>
       )}
     </aside>

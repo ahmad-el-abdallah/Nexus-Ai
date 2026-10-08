@@ -48,6 +48,8 @@ export function CameraButtons() {
   const rotateBy = useOfficeStore((s) => s.rotateBy);
   const showPerf = useOfficeStore((s) => s.showPerf);
   const togglePerf = useOfficeStore((s) => s.togglePerf);
+  const ambient = useOfficeStore((s) => s.ambient);
+  const setAmbient = useOfficeStore((s) => s.setAmbient);
   const is3d = view === "3d";
   return (
     <div className="pointer-events-auto flex items-center gap-1.5">
@@ -66,6 +68,15 @@ export function CameraButtons() {
           <button type="button" onClick={() => zoomBy(0.8)} className={`${btn} ${idle}`} aria-label="Zoom out">−</button>
           <button type="button" onClick={() => rotateBy(Math.PI / 8)} className={`${btn} ${idle}`} aria-label="Rotate left">⟲</button>
           <button type="button" onClick={() => rotateBy(-Math.PI / 8)} className={`${btn} ${idle}`} aria-label="Rotate right">⟳</button>
+          <button
+            type="button"
+            onClick={() => setAmbient(!ambient)}
+            aria-pressed={ambient}
+            title="Decorative motion: idle breathing and coffee breaks. It never changes anyone's real status."
+            className={`${btn} ${ambient ? on : idle} hidden w-auto px-3 text-xs sm:grid`}
+          >
+            Ambient {ambient ? "on" : "off"}
+          </button>
           <button
             type="button"
             onClick={togglePerf}

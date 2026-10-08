@@ -6,8 +6,8 @@ reported, and the next stage starts only after the owner's explicit approval.
 | # | Stage | Status |
 | --- | --- | --- |
 | 1 | Repository, architecture & environment | ✅ Approved |
-| 2 | High-quality 3D office world | ✅ Complete, awaiting approval for Stage 3 |
-| 3 | AI employee characters | ⏳ Not started |
+| 2 | High-quality 3D office world | ✅ Approved |
+| 3 | AI employee characters | ✅ Complete, awaiting approval for Stage 4 |
 | 4 | Departments & organisational structure | ⏳ Not started |
 | 5 | NVIDIA AI connection | ⏳ Not started |
 | 6 | Text communication | ⏳ Not started |
@@ -71,3 +71,26 @@ reported, and the next stage starts only after the owner's explicit approval.
 - **Ground floor:** Reception, Sales, Marketing, Employee Lounge, Cafeteria
 - **Level 2:** Executive Office, Meeting Room, Engineering
 - 28 workstations with stable desk ids, ready for employee assignment in Stage 3
+
+---
+
+## Stage 3 — AI employee characters
+
+**Completed:** 2026-10-08 · **Commit:** "Stage 3: AI employee characters"
+
+### Acceptance criteria
+
+| Criterion | Result | Evidence |
+| --- | --- | --- |
+| Multiple unique employees are visible | PASS | e2e: all 19 roster employees rendered, seated, unique ids; generator variety unit-tested |
+| Animations function | PASS | Unit tests for poses (feet on floor, hands at keyboard, walk cycle); character studio e2e; walking verified by the suspend/activate e2e |
+| Employee selection works | PASS | e2e: 3D click on a character (raycast) selects them; search and room team list select them |
+| Employees have unique IDs | PASS | Backend `emp_` + 12 hex ids, unique desks (backend tests) |
+| Visual states update from system state | PASS | e2e: suspend via API → avatar walks out and is marked away; activate → walks back and sits |
+
+### Notes
+
+- Only *idle* and *suspended* statuses occur until the task system exists (Stage 8);
+  the other poses are wired and previewed in the character studio.
+- Ambient breaks and idle motion are decorative, labelled, optional, and never change
+  any status.

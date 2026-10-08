@@ -71,3 +71,6 @@ declare global {
     __NEXUS_OFFICE__?: unknown;
   }
 }
+
+/** Camera facts other scene parts need (set by the camera rig). */
+export const cameraInfo = { overviewZoom: 1 };

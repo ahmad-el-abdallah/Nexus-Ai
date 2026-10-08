@@ -14,6 +14,7 @@ SKIP_DIRS = {
     "node_modules",
     ".venv",
     ".next",
+    ".next-e2e",
     "var",
     "__pycache__",
     ".pytest_cache",

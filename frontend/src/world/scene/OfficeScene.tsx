@@ -4,7 +4,7 @@ import { AdaptiveDpr, Environment, Lightformer } from "@react-three/drei";
 import { useFrame, useThree } from "@react-three/fiber";
 import { Bloom, EffectComposer, N8AO, ToneMapping } from "@react-three/postprocessing";
 import { ToneMappingMode } from "postprocessing";
-import { type ReactNode, useEffect, useLayoutEffect, useMemo, useRef } from "react";
+import { type ReactNode, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { DirectionalLight, Group } from "three";
 
 import type { BuiltParts } from "../geometry/PartsBuilder";
@@ -12,9 +12,10 @@ import { buildElevator, buildPlinth, buildSlab } from "../geometry/site";
 import { FLOORS } from "../layout/building";
 import { isFloorVisible } from "../layout/queries";
 import type { FloorDef } from "../layout/types";
-import { castsShadow, FINISHES, finishMaterials } from "../materials";
+import { castsShadow, FINISHES, finishMaterials, receivesShadow } from "../materials";
 import { useOfficeStore } from "../state/officeStore";
 import { Benchmark } from "./Benchmark";
+import { Characters } from "./Characters";
 import { CameraRig } from "./CameraRig";
 import { Furniture } from "./Furniture";
 import { PerfProbe } from "./PerfProbe";
@@ -29,7 +30,7 @@ function Parts({ parts, name }: { parts: BuiltParts; name: string }) {
   return (
     <>
       {FINISHES.filter((f) => parts[f]).map((f) => (
-        <mesh key={f} name={`${name}:${f}`} geometry={parts[f]} material={materials[f]} castShadow={castsShadow(f)} receiveShadow={f !== "glow"} raycast={noRaycast} />
+        <mesh key={f} name={`${name}:${f}`} geometry={parts[f]} material={materials[f]} castShadow={castsShadow(f)} receiveShadow={receivesShadow(f)} raycast={noRaycast} />
       ))}
     </>
   );
@@ -142,6 +143,8 @@ function Effects() {
 
 export function OfficeScene({ bench }: { bench: boolean }) {
   const quality = useOfficeStore((s) => s.quality);
+  // Diagnostic switch for benchmarking the building without people (`?people=off`).
+  const [people] = useState(() => typeof window === "undefined" || new URLSearchParams(window.location.search).get("people") !== "off");
   return (
     <>
       <Lighting shadows={quality !== "low"} />
@@ -153,6 +156,7 @@ export function OfficeScene({ bench }: { bench: boolean }) {
           <Furniture floor={floor.id} />
         </FloorLevel>
       ))}
+      {people && <Characters />}
       <RoomLabels />
       <CameraRig />
       {/* Lower the resolution only while the camera moves; still frames render at full DPR. */}

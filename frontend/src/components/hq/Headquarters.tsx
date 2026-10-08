@@ -8,10 +8,13 @@ import { NexusMark } from "@/components/NexusMark";
 import { StatusDot } from "@/components/StatusPill";
 import { useSystemStatus } from "@/hooks/useSystemStatus";
 import { detectWebGL } from "@/lib/webgl";
+import { STATUS_META } from "@/world/characters/status";
 import { FloorPlan2D } from "@/world/plan2d/FloorPlan2D";
+import { startEmployeePolling, useEmployeeStore } from "@/world/state/employeeStore";
 import { type Quality, useOfficeStore } from "@/world/state/officeStore";
 
 import { CameraButtons, FloorStack, PerfOverlay, QualitySelect, ViewToggle } from "./Controls";
+import { EmployeePanel } from "./EmployeePanel";
 import { RoomFinder } from "./RoomFinder";
 import { RoomPanel } from "./RoomPanel";
 
@@ -43,6 +46,36 @@ function SystemLink() {
   );
 }
 
+/** Real headcount from the roster, by status. */
+function StaffChip() {
+  const employees = useEmployeeStore((s) => s.employees);
+  const load = useEmployeeStore((s) => s.load);
+  if (load === "error" && employees.length === 0) {
+    return (
+      <span className="hidden h-10 items-center rounded-xl bg-nx-bg/70 px-3 text-xs text-nx-error ring-1 ring-nx-error/30 backdrop-blur-md md:flex" role="status">
+        Roster unavailable
+      </span>
+    );
+  }
+  if (employees.length === 0) return null;
+  const counts = new Map<string, number>();
+  for (const e of employees) counts.set(e.status, (counts.get(e.status) ?? 0) + 1);
+  const summary = [...counts.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .map(([status, n]) => `${n} ${STATUS_META[status as keyof typeof STATUS_META].label.toLowerCase()}`)
+    .join(" · ");
+  return (
+    <span
+      data-testid="staff-chip"
+      className="hidden h-10 items-center gap-2 rounded-xl bg-nx-bg/70 px-3 text-xs text-nx-muted ring-1 ring-nx-line-strong backdrop-blur-md xl:flex"
+      title="AI employees by current status"
+    >
+      <span className="font-semibold text-nx-text">{employees.length} AI employees</span>
+      {summary}
+    </span>
+  );
+}
+
 function FallbackNotice() {
   const webgl = useOfficeStore((s) => s.webgl);
   if (webgl !== "unsupported" && webgl !== "lost") return null;
@@ -58,7 +91,9 @@ function FallbackNotice() {
 export function Headquarters() {
   const view = useOfficeStore((s) => s.view);
   const webgl = useOfficeStore((s) => s.webgl);
-  const selected = useOfficeStore((s) => s.selectedRoomId);
+  const selected = useOfficeStore((s) => s.selectedRoomId ?? s.selectedEmployeeId);
+
+  useEffect(() => startEmployeePolling(), []);
 
   // Capability detection and URL options (?view=2d, ?quality=high|balanced|low, ?perf).
   useEffect(() => {
@@ -67,6 +102,7 @@ export function Headquarters() {
     const quality = params.get("quality");
     if (quality === "high" || quality === "balanced" || quality === "low") store.setQuality(quality as Quality);
     if (params.has("perf") && !store.showPerf) store.togglePerf();
+    if (window.matchMedia?.("(prefers-reduced-motion: reduce)").matches || params.get("ambient") === "off") store.setAmbient(false);
     const supported = detectWebGL().webgl2 && !params.has("nowebgl");
     if (!supported) store.setWebGL("unsupported");
     else if (params.get("view") === "2d") store.setView("2d");
@@ -93,6 +129,7 @@ export function Headquarters() {
             <RoomFinder />
           </div>
           <div className="ml-auto flex items-center gap-2">
+            <StaffChip />
             <QualitySelect />
             <ViewToggle />
             <SystemLink />
@@ -122,6 +159,7 @@ export function Headquarters() {
         </div>
 
         <RoomPanel />
+        <EmployeePanel />
       </div>
     </main>
   );

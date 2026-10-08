@@ -1,6 +1,13 @@
 import { CURRENT_STAGE, STAGES } from "@/lib/stages";
 
 const NEXT_STAGE_SCOPE: Record<number, string[]> = {
+  4: [
+    "All 20 departments with directors and rosters",
+    "Organisational hierarchy and reporting lines",
+    "Department pages, task areas and configuration",
+    "Create, rename and reassign AI employees",
+    "Changes persisted in the database",
+  ],
   2: [
     "Reception, executive office and boardroom",
     "Marketing, engineering and sales floors",

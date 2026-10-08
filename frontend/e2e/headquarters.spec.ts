@@ -25,7 +25,7 @@ test.describe("3D headquarters", () => {
     await page.locator('[data-room-label="engineering"]').click();
     const panel = page.getByTestId("room-panel");
     await expect(panel.getByRole("heading", { name: "Engineering" })).toBeVisible();
-    await expect(panel).toContainText("No AI employees assigned yet");
+    await expect(panel).toContainText("6 of 12 desks filled");
     await settle(page);
     const after = await cameraState(page);
     expect(after.zoom).toBeGreaterThan(before.zoom * 1.3);
@@ -59,7 +59,7 @@ test.describe("3D headquarters", () => {
   test("room search jumps to rooms on other floors", async ({ page }) => {
     await page.goto("/");
     await waitForOffice(page);
-    const search = page.getByRole("combobox", { name: "Find a room or department" });
+    const search = page.getByRole("combobox", { name: "Find a room, department or employee" });
     await search.fill("caf");
     await search.press("Enter");
     await expect(page.getByTestId("room-panel").getByRole("heading", { name: "Cafeteria" })).toBeVisible();

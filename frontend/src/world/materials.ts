@@ -2,12 +2,20 @@ import { DoubleSide, type Material, MeshBasicMaterial, MeshLambertMaterial, Mesh
 
 import type { Finish } from "./geometry/PartsBuilder";
 
-let shared: Record<Finish, Material> | null = null;
+/**
+ * How a material is drawn. three.js recomputes shader parameters whenever one
+ * material alternates between plain, instanced and instance-coloured meshes,
+ * so each usage gets its own material instance (measured: ~20% of frame CPU).
+ */
+export type MaterialUse = "mesh" | "instanced" | "instancedColor";
 
-/** One material per finish, shared by every mesh in the scene. */
-export function finishMaterials(): Record<Finish, Material> {
-  if (!shared) {
-    shared = {
+const shared = new Map<MaterialUse, Record<Finish, Material>>();
+
+/** One material per finish and usage, shared by every matching mesh in the scene. */
+export function finishMaterials(use: MaterialUse = "mesh"): Record<Finish, Material> {
+  let set = shared.get(use);
+  if (!set) {
+    set = {
       // Lambert for the large matte surfaces: far cheaper per pixel than PBR on integrated GPUs.
       matte: new MeshLambertMaterial({ vertexColors: true }),
       gloss: new MeshStandardMaterial({ vertexColors: true, roughness: 0.3, metalness: 0.25, envMapIntensity: 1.2 }),
@@ -21,11 +29,15 @@ export function finishMaterials(): Record<Finish, Material> {
         envMapIntensity: 1.6,
         depthWrite: false,
         side: DoubleSide,
+        // Thin panes don't need back-then-front two-pass rendering, and that path
+        // flips material.side with needsUpdate on every draw (shader re-evaluation).
+        forceSinglePass: true,
       }),
     };
-    shared.glass.name = "glass";
+    set.glass.name = "glass";
+    shared.set(use, set);
   }
-  return shared;
+  return set;
 }
 
 export const FINISHES: Finish[] = ["matte", "gloss", "glow", "glass"];
@@ -34,3 +46,9 @@ export const FINISHES: Finish[] = ["matte", "gloss", "glow", "glass"];
 export function castsShadow(finish: Finish): boolean {
   return finish === "matte" || finish === "gloss";
 }
+
+/**
+ * Only opaque finishes receive shadows. Keep this identical for every mesh
+ * sharing a material, or three.js keeps switching shader variants.
+ */
+export const receivesShadow = castsShadow;

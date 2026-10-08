@@ -4,6 +4,8 @@ export interface OfficeHook {
   state: () => { activeFloor: string; selectedRoomId: string | null; view: string; quality: string };
   camera: () => { zoom: number; azimuth: number; polar: number; target: number[]; overviewZoom: number };
   projectRoom: (id: string) => { x: number; y: number } | null;
+  projectEmployee: (id: string) => { x: number; y: number } | null;
+  employees: () => Array<{ id: string; name: string; status: string; mode: string; doing: string; floor: string; visible: boolean }>;
 }
 
 export function collectErrors(page: Page): string[] {
@@ -39,4 +41,12 @@ export async function settle(page: Page) {
       return same;
     }, { intervals: [300, 300, 300, 300, 300, 500, 500, 1000] })
     .toBe(true);
+}
+
+export const officeEmployees = (page: Page) =>
+  page.evaluate(() => (window as unknown as { __NEXUS_OFFICE__: OfficeHook }).__NEXUS_OFFICE__.employees());
+
+/** Waits until the roster has loaded into the 3D office. */
+export async function waitForEmployees(page: Page, count: number) {
+  await expect.poll(async () => (await officeEmployees(page)).length, { timeout: 20_000 }).toBe(count);
 }

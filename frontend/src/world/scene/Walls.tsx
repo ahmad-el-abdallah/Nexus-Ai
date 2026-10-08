@@ -9,7 +9,7 @@ import { WALL_ITEMS, WALLS } from "../layout/building";
 import { FLOOR_BY_ID, pointOnWall } from "../layout/queries";
 import type { FloorId, Opening, WallDef, WallItemDef } from "../layout/types";
 import { PartsBuilder } from "../geometry/PartsBuilder";
-import { castsShadow, FINISHES, finishMaterials } from "../materials";
+import { castsShadow, FINISHES, finishMaterials, receivesShadow } from "../materials";
 import { useOfficeStore } from "../state/officeStore";
 import { drawnTexture, drawWallItem, wallItemCanvasSize } from "../textures";
 import { requestShadowUpdate } from "./runtime";
@@ -36,7 +36,7 @@ function PartsMeshes({ parts, name }: { parts: WallGroupGeometry["full"]; name: 
           geometry={parts[f]}
           material={materials[f]}
           castShadow={castsShadow(f)}
-          receiveShadow={f !== "glow"}
+          receiveShadow={receivesShadow(f)}
           raycast={noRaycast}
         />
       ))}
@@ -219,7 +219,7 @@ function Door({ wall, opening }: { wall: WallDef; opening: Opening }) {
           position={[opening.at + (double ? (i === 0 ? -leafWidth / 2 : leafWidth / 2) : 0), DOOR_HEIGHT / 2, side * inset]}
         >
           <mesh geometry={leafParts.glass} material={materials.glass} raycast={noRaycast} />
-          <mesh geometry={leafParts.gloss} material={materials.gloss} raycast={noRaycast} castShadow />
+          <mesh geometry={leafParts.gloss} material={materials.gloss} raycast={noRaycast} castShadow receiveShadow />
         </group>
       ))}
     </group>

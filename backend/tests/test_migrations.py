@@ -4,10 +4,12 @@ from pathlib import Path
 
 from alembic.autogenerate import compare_metadata
 from alembic.runtime.migration import MigrationContext
+from alembic.script import ScriptDirectory
 from sqlalchemy import create_engine, text
 
 import app.models  # noqa: F401
 from app.db.base import Base
+from app.db.migrations import alembic_config
 from tests.conftest import run_migrations
 
 
@@ -24,9 +26,11 @@ def test_upgrade_downgrade_upgrade_roundtrip(tmp_path: Path) -> None:
     with engine.connect() as conn:
         tables = {row[0] for row in conn.execute(text("SELECT name FROM sqlite_master"))}
     assert "system_metadata" not in tables
+    assert "employees" not in tables
     run_migrations(url)
     with engine.connect() as conn:
-        assert MigrationContext.configure(conn).get_current_revision() == "0001_initial"
+        head = ScriptDirectory.from_config(alembic_config()).get_current_head()
+        assert MigrationContext.configure(conn).get_current_revision() == head
     engine.dispose()
 
 

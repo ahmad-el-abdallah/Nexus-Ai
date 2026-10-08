@@ -7,9 +7,10 @@ interactive 3D headquarters. Every department, employee, desk and meeting room m
 real system functionality: real tasks, real model calls, real approvals. Nothing on
 screen is simulated.
 
-> **Status: Stage 2 of 16 — 3D office world.** The headquarters is an interactive 3D
-> building with selectable rooms and floors, an isometric camera and a 2D fallback.
-> AI employees arrive in Stage 3. See [`docs/STAGES.md`](docs/STAGES.md).
+> **Status: Stage 3 of 16 — AI employee characters.** 19 AI employees, stored in the
+> database, sit at their desks in the 3D headquarters with generated appearances,
+> animations driven by their real status, name tags and an owner-controlled
+> suspend/activate. Departments are configured in Stage 4. See [`docs/STAGES.md`](docs/STAGES.md).
 
 ## Quick start
 
@@ -22,10 +23,11 @@ make dev     # backend on :8000 + frontend on :3000
 ```
 
 Open **http://localhost:3000** for the headquarters and **http://localhost:3000/system**
-for live system status. API docs: **http://localhost:3000/api/docs**.
+for live system status, **http://localhost:3000/characters** for the character studio
+(animation preview). API docs: **http://localhost:3000/api/docs**.
 
 **Navigating the office:** drag to pan · right-drag to rotate · scroll to zoom · click a
-room (or its label) to focus it · `G`/`2`/`All` buttons pick floors · ⌂ returns to the
+room, its label or a person to focus it · search finds rooms and people · `G`/`2`/`All` buttons pick floors · ⌂ returns to the
 overview. Keyboard: arrows/WASD pan, `Q`/`E` rotate, `+`/`-` zoom, `0` overview, `Esc`
 deselect.
 

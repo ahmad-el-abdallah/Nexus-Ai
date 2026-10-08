@@ -9,7 +9,7 @@ import type { BuiltParts, Finish } from "../geometry/PartsBuilder";
 import { WORKSTATIONS } from "../layout/building";
 import { FLOOR_BY_ID, placementsOn, ROOM_BY_ID } from "../layout/queries";
 import type { FloorId, FurnitureType, Workstation } from "../layout/types";
-import { castsShadow, FINISHES, finishMaterials } from "../materials";
+import { castsShadow, FINISHES, finishMaterials, receivesShadow } from "../materials";
 import { lockScreenTexture } from "../textures";
 
 const noRaycast = () => null;
@@ -20,7 +20,8 @@ function compose(x: number, y: number, z: number, rotY: number): Matrix4 {
 }
 
 function InstancedParts({ parts, matrices, colors, label }: { parts: BuiltParts; matrices: Matrix4[]; colors: Color[]; label: string }) {
-  const materials = finishMaterials();
+  const tinted = colors.some((c) => !c.equals(WHITE));
+  const materials = finishMaterials(tinted ? "instancedColor" : "instanced");
   return (
     <>
       {FINISHES.filter((f) => parts[f]).map((finish) => (
@@ -65,7 +66,7 @@ function InstancedFinish({
       name={name}
       args={[geometry, material, matrices.length]}
       castShadow={shadow}
-      receiveShadow={finish !== "glow"}
+      receiveShadow={receivesShadow(finish)}
       raycast={noRaycast}
       frustumCulled={false}
     />

@@ -5,7 +5,7 @@
 // orbits the camera continuously for 10 s per quality level and reports
 // frame-time statistics measured inside the page (window.__NEXUS_BENCH__).
 //
-//   node scripts/bench-3d.mjs [baseUrl] [--uncapped] [--size=1920x1080]
+//   node scripts/bench-3d.mjs [baseUrl] [--uncapped] [--size=1920x1080] [--query=people=off]
 //
 // --uncapped disables vsync/frame-rate limits to measure headroom; without it
 // numbers reflect what a 60 Hz display would show.
@@ -17,6 +17,7 @@ import { join } from "node:path";
 const args = process.argv.slice(2);
 const base = args.find((a) => !a.startsWith("--")) ?? "http://127.0.0.1:3000";
 const uncapped = args.includes("--uncapped");
+const extra = args.find((a) => a.startsWith("--query="))?.slice(8) ?? "";
 const [width, height] = (args.find((a) => a.startsWith("--size="))?.slice(7) ?? "1920x1080").split("x").map(Number);
 const qualities = ["low", "balanced", "high"];
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -66,7 +67,7 @@ async function runOnce(quality) {
       });
     await send("Emulation.setDeviceMetricsOverride", { width, height, deviceScaleFactor: 1, mobile: false });
     await send("Page.enable");
-    await send("Page.navigate", { url: `${base}/?bench=1&quality=${quality}` });
+    await send("Page.navigate", { url: `${base}/?bench=1&quality=${quality}${extra ? `&${extra}` : ""}` });
     for (let i = 0; i < 120; i++) {
       await sleep(500);
       const r = await send("Runtime.evaluate", { expression: "JSON.stringify(window.__NEXUS_BENCH__ ?? null)", returnByValue: true });
