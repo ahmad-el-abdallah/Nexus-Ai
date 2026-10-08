@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 
+import { fetchTasks, type Task, TASK_STATUS_LABEL } from "@/lib/chat";
 import { chatHref } from "@/lib/routing";
 import { STATUS_META } from "@/world/characters/status";
 import { officeWorld } from "@/world/characters/world";
@@ -114,10 +115,7 @@ export function EmployeePanel() {
         ))}
       </dl>
 
-      <div className="mt-4 flex items-center justify-between gap-3 rounded-xl bg-white/[0.03] px-4 py-3 text-sm ring-1 ring-nx-line">
-        <span className="shrink-0 text-nx-muted">Current task</span>
-        <span className="text-right text-nx-text">None — task execution arrives in Stage 8</span>
-      </div>
+      <CurrentTask employeeId={employee.id} changedAt={employee.status_changed_at} />
 
       <div className="mt-5 flex flex-wrap items-center gap-2">
         <Link
@@ -162,5 +160,40 @@ export function EmployeePanel() {
       <p className="mt-4 font-mono text-[11px] text-nx-faint">{employee.id}</p>
       {editing && <EmployeeEditor employee={employee} onClose={() => setEditing(false)} onDeleted={() => selectEmployee(null)} />}
     </aside>
+  );
+}
+
+const ACTIVE_TASK: Task["status"][] = ["running", "reviewing", "planning", "summarizing", "awaiting_review", "queued", "active"];
+
+/** The employee's real workflow task, if any (re-read whenever their status changes). */
+function CurrentTask({ employeeId, changedAt }: { employeeId: string; changedAt: string }) {
+  const [tasks, setTasks] = useState<Task[] | null>(null);
+  useEffect(() => {
+    let live = true;
+    fetchTasks({ assignee_id: employeeId })
+      .then((list) => live && setTasks(list.filter((t) => t.kind !== "manual" && ACTIVE_TASK.includes(t.status))))
+      .catch(() => live && setTasks([]));
+    return () => {
+      live = false;
+    };
+  }, [employeeId, changedAt]);
+  const current = tasks?.sort((a, b) => ACTIVE_TASK.indexOf(a.status) - ACTIVE_TASK.indexOf(b.status))[0];
+  return (
+    <div className="mt-4 flex items-center justify-between gap-3 rounded-xl bg-white/[0.03] px-4 py-3 text-sm ring-1 ring-nx-line" data-testid="current-task">
+      <span className="shrink-0 text-nx-muted">Current task</span>
+      {current ? (
+        <span className="min-w-0 text-right">
+          <Link href={`/workflows/${current.workflow_id}`} className="block truncate text-nx-text hover:text-nx-cyan">
+            {current.title}
+          </Link>
+          <span className="text-[11px] text-nx-faint">
+            {TASK_STATUS_LABEL[current.status]}
+            {tasks && tasks.length > 1 ? ` · ${tasks.length - 1} more waiting` : ""}
+          </span>
+        </span>
+      ) : (
+        <span className="text-right text-nx-text">{tasks === null ? "…" : "None"}</span>
+      )}
+    </div>
   );
 }

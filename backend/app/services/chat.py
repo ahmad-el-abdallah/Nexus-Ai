@@ -43,7 +43,8 @@ from app.models import (
     MessageRole,
     MessageStatus,
 )
-from app.schemas import AttachmentOut, EmployeeOut, MessageOut, dump
+from app.schemas import AttachmentOut, MessageOut, dump
+from app.services.activity import ActivityTracker
 from app.services.org import SENIORITY_LEVELS
 
 log = get_logger("nexus.chat")
@@ -116,18 +117,22 @@ class Reply:
     task: asyncio.Task[None] | None = None
     content: str = ""
     state: str = "queued"  # queued → generating (→ thinking) → writing → done
-    busy: bool = False  # the employee's status was switched to "working"
+    activity: int | None = None  # status token while the employee is "working"
 
 
 class ChatService:
-    def __init__(self, database: Database, gateway: AIGateway, events: EventBus) -> None:
+    def __init__(
+        self,
+        database: Database,
+        gateway: AIGateway,
+        events: EventBus,
+        activity: ActivityTracker,
+    ) -> None:
         self.database = database
         self.gateway = gateway
         self.events = events
         self.replies: dict[str, Reply] = {}  # by conversation id
-        self._busy: dict[str, int] = {}  # employee id → replies in progress
-        self._before: dict[str, tuple[str, str | None]] = {}
-        self._status_lock = asyncio.Lock()
+        self.activity = activity
 
     # --------------------------------------------------------------- routing
 
@@ -195,6 +200,8 @@ class ChatService:
         used = 0
         considered = 0
         for m in rows:  # newest first
+            if m.role == MessageRole.SYSTEM:
+                continue  # NEXUS AI's own notices are not part of the conversation
             if m.role == MessageRole.AGENT:
                 if not m.content.strip():
                     continue  # failed replies carry no content
@@ -342,8 +349,9 @@ class ChatService:
         started = time.perf_counter()
         last_flush = started
         try:
-            await self._set_busy(reply.employee_id, True)
-            reply.busy = True
+            reply.activity = await self.activity.begin(
+                reply.employee_id, EmployeeStatus.WORKING.value, CHAT_STATUS_DETAIL
+            )
             self._state(reply, "queued")
             async for event in events:
                 if event.kind == "started":
@@ -429,8 +437,8 @@ class ChatService:
         finally:
             self.replies.pop(reply.conversation_id, None)
             self._state(reply, "done")
-            if reply.busy:
-                await self._set_busy(reply.employee_id, False)
+            if reply.activity is not None:
+                await self.activity.end(reply.employee_id, reply.activity)
             async with self.database.sessionmaker() as session:
                 message = await session.get(Message, reply.message_id)
                 if message is not None:
@@ -485,42 +493,6 @@ class ChatService:
             await self.stop(conversation_id)
         return len(conversations)
 
-    # ---------------------------------------------------------- live status
-
-    async def _set_busy(self, employee_id: str, busy: bool) -> None:
-        """Real status while replying: working → back to what it was before."""
-        async with self._status_lock:
-            count = self._busy.get(employee_id, 0) + (1 if busy else -1)
-            if count > 0:
-                self._busy[employee_id] = count
-            else:
-                self._busy.pop(employee_id, None)
-            if (busy and count != 1) or (not busy and count > 0):
-                return
-            async with self.database.sessionmaker() as session:
-                employee = await session.get(Employee, employee_id)
-                if employee is None:
-                    return
-                if busy:
-                    if employee.status == EmployeeStatus.SUSPENDED:
-                        return
-                    self._before[employee_id] = (employee.status, employee.status_detail)
-                    employee.status = EmployeeStatus.WORKING.value
-                    employee.status_detail = CHAT_STATUS_DETAIL
-                else:
-                    before = self._before.pop(employee_id, (EmployeeStatus.IDLE.value, None))
-                    # Leave any status set meanwhile by someone else (e.g. suspension).
-                    if (
-                        employee.status != EmployeeStatus.WORKING
-                        or employee.status_detail != CHAT_STATUS_DETAIL
-                    ):
-                        return
-                    employee.status, employee.status_detail = before
-                employee.status_changed_at = datetime.now(UTC)
-                await session.commit()
-                await session.refresh(employee)
-                self.events.publish("employee.updated", dump(EmployeeOut.model_validate(employee)))
-
     # ---------------------------------------------------------- conversations
 
     async def summary_extras(
@@ -562,8 +534,8 @@ class ChatService:
     # ------------------------------------------------------------ lifecycle
 
     async def recover(self) -> None:
-        """After a restart nothing is streaming: close interrupted replies and
-        return employees left "replying" to idle."""
+        """After a restart nothing is streaming: close interrupted replies.
+        (Employee statuses are reset by the activity tracker.)"""
         async with self.database.sessionmaker() as session:
             interrupted = await session.execute(
                 update(Message)
@@ -575,24 +547,11 @@ class ChatService:
                     finished_at=datetime.now(UTC),
                 )
             )
-            reset = await session.execute(
-                update(Employee)
-                .where(
-                    Employee.status == EmployeeStatus.WORKING.value,
-                    Employee.status_detail == CHAT_STATUS_DETAIL,
-                )
-                .values(
-                    status=EmployeeStatus.IDLE.value,
-                    status_detail=None,
-                    status_changed_at=datetime.now(UTC),
-                )
-            )
             await session.commit()
-        if interrupted.rowcount or reset.rowcount:  # type: ignore[attr-defined]
+        if interrupted.rowcount:  # type: ignore[attr-defined]
             log.warning(
                 "chat.recovered",
                 interrupted_replies=interrupted.rowcount,  # type: ignore[attr-defined]
-                employees_reset=reset.rowcount,  # type: ignore[attr-defined]
             )
 
     async def shutdown(self) -> None:

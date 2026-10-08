@@ -10,6 +10,7 @@ import { startRosterSync } from "@/world/state/employeeStore";
 export const NAV = [
   { href: "/", label: "Headquarters" },
   { href: "/chat", label: "Chat" },
+  { href: "/workflows", label: "Workflows" },
   { href: "/departments", label: "Departments" },
   { href: "/org", label: "Org chart" },
   { href: "/settings/ai", label: "Settings" },
@@ -29,7 +30,7 @@ export function NavLinks({ compact = false }: { compact?: boolean }) {
             aria-current={active ? "page" : undefined}
             className={`shrink-0 rounded-lg px-3 py-1.5 text-xs font-medium whitespace-nowrap transition ${
               active ? "bg-white/10 text-white" : "text-nx-muted hover:bg-white/5 hover:text-nx-text"
-            } ${compact && (item.href === "/system" || item.href === "/settings/ai") ? "hidden 2xl:inline" : ""}`}
+            } ${compact && (item.href === "/system" || item.href === "/settings/ai" || item.href === "/org") ? "hidden 2xl:inline" : ""}`}
           >
             {item.label}
           </Link>

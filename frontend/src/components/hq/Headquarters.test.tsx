@@ -144,7 +144,7 @@ describe("RoomFinder", () => {
 });
 
 describe("EmployeePanel", () => {
-  it("shows recorded facts and the honest status", () => {
+  it("shows recorded facts and the honest status", async () => {
     useEmployeeStore.setState({ employees: [person()], load: "ready" });
     useOfficeStore.getState().selectEmployee("emp_aaaaaaaaaaaa", false);
     render(<EmployeePanel />);
@@ -153,7 +153,7 @@ describe("EmployeePanel", () => {
     expect(screen.getByTestId("employee-status")).toHaveTextContent("Idle");
     expect(panel).toHaveTextContent("Sales · desk 2");
     expect(panel).toHaveTextContent("AI modelNone selected");
-    expect(panel).toHaveTextContent("None — task execution arrives in Stage 8");
+    expect(await screen.findByTestId("current-task")).toHaveTextContent("Current taskNone");
   });
 
   it("suspends through the backend and reflects the saved status", async () => {

@@ -30,14 +30,14 @@ inference, email, speech) and strict security rules. Several constraints apply:
 
 ## Deferred decisions
 
-- **Orchestration engine (Stage 8).** The choice is between LangGraph and a custom
-  state machine persisted in the database.
-  - The current lean is the **custom persisted state machine**:
-    - Task state must survive restarts.
-    - It must drive the 3D office through events.
-    - It must enforce budgets and approvals in our own code.
-    - It avoids a heavy dependency.
-  - LangGraph will be re-evaluated against these requirements at Stage 8.
+- **Orchestration engine (decided in Stage 8): custom persisted state machine**
+  (`app/orchestration/`), not LangGraph. Every transition is written to the database
+  before the next step, so a restart loses only the calls in flight (the workflow
+  pauses and the owner resumes it); it drives the 3D office through the same event bus;
+  the owner-approval checkpoint, budgets and hard limits are plain code; and it adds no
+  dependency. The flow is fixed (CEO plan → owner approval → supervisor breakdown →
+  workers → review → department summary → CEO report), which a small explicit state
+  machine expresses more safely than a general agent graph.
 - **Embeddings and vector search (Stage 13).** Options are SQLite with a vector
   extension, PostgreSQL with pgvector, or keyword-only retrieval when no embedding model
   is configured.

@@ -173,7 +173,7 @@ export function DepartmentPage({ departmentKey }: { departmentKey: string }) {
           <h2 id="tasks-title" className={h2}>
             Task board
           </h2>
-          <p className="text-xs text-nx-faint">Tasks are recorded from chat; the orchestration engine that executes them arrives in Stage 8.</p>
+          <p className="text-xs text-nx-faint">Live tasks from workflows, plus tasks you recorded from chat.</p>
         </div>
         <TaskBoard department={department.key} />
       </section>

@@ -356,6 +356,7 @@ async def test_restart_recovers_interrupted_replies(chat_client: httpx.AsyncClie
         cmo.status, cmo.status_detail = "working", CHAT_STATUS_DETAIL
         await session.commit()
     await app.state.chat.recover()
+    await app.state.activity.recover()
     reply = (await messages(chat_client, cid))[-1]
     assert reply["status"] == "error"
     assert reply["error_kind"] == "interrupted"

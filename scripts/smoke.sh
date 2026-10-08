@@ -85,6 +85,7 @@ check "GET /org"              200 "$WEB/org"              'Org chart'
 check "GET /settings/ai"      200 "$WEB/settings/ai"      'Settings'
 check "GET /chat"             200 "$WEB/chat"             'Chat'
 check "GET /settings/voice"   200 "$WEB/settings/voice"   'Settings'
+check "GET /workflows"        200 "$WEB/workflows"        'Workflows'
 
 echo "Frontend → backend proxy:"
 check "GET /api/health/ready" 200 "$WEB/api/health/ready" 'x-request-id'
@@ -94,6 +95,7 @@ check "GET /api/ai/settings"  200 "$WEB/api/ai/settings"  '"provider":"nvidia"'
 check "GET /api/conversations" 200 "$WEB/api/conversations" '^\['
 check "GET /api/tasks"        200 "$WEB/api/tasks"        '^\['
 check "GET /api/voice"        200 "$WEB/api/voice"        '"stt_model"'
+check "GET /api/workflows"    200 "$WEB/api/workflows"    '^\['
 # The live event stream never ends by itself: read its first event, then hang up.
 events="$(curl -sN --max-time 3 "$WEB/api/events" || true)"
 if grep -q '^event: ready' <<<"$events"; then

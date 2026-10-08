@@ -97,7 +97,7 @@ flowchart LR
 | `app/services/ai/` | 5 | *Planned.* AI gateway: provider adapters, model catalog, routing, budgets, usage |
 | `app/services/chat.py`, `app/api/chat.py`, `app/api/tasks.py` | 6 | Conversations, routing to employee/department/CEO, background streaming replies, context, attachments, search, tasks |
 | `app/voice/`, `app/api/voice.py` | 7 | Local speech: model catalogue (pinned + SHA-256), verified installs, faster-whisper transcription, Piper synthesis, speech text preparation |
-| `app/services/orchestration/` | 8 | *Planned.* Task state machine, scheduler, delegation, review gates |
+| `app/orchestration/` (`engine.py`, `plans.py`, `prompts.py`), `app/api/workflows.py`, `app/services/activity.py`, `app/services/staffing.py` | 8 | Workflow engine: CEO delegation, supervisors, workers, reviews, dependencies, retries, pause/cancel, hard limits; live employee statuses |
 | `app/services/tools/` | 8, 15 | *Planned.* Tool gateway: allowlists, sandboxing, permission checks |
 | `app/services/email/` | 9 | *Planned.* Provider adapters, drafts, approval queue, idempotent sending |
 | `app/services/metrics/` | 10 | *Planned.* Evidence-based ratings with configurable weights |
@@ -403,7 +403,7 @@ cosmetic and is visibly distinct from work state.
   message id, which the UI scrolls to.
 - **Tasks:** `POST /api/tasks` records a task from any message (department, optional
   assignee who must be in it). Tasks stay **open — not started** until the
-  orchestration engine of Stage 8 executes them; the owner can cancel or reopen them.
+  owner hands them to the CEO as a workflow (Stage 8); the owner can cancel or reopen them.
 - **Markdown:** rendered with react-markdown + GFM; raw HTML is dropped, links open
   externally with `noopener noreferrer`, and remote images are shown as links, never
   loaded.
@@ -444,6 +444,47 @@ cosmetic and is visibly distinct from work state.
 - **Licences:** Whisper models MIT; LibriTTS-R voice data CC BY 4.0; the Arabic voice
   follows its dataset's terms; the Piper engine (`piper-tts`) is GPL-3.0 — fine for
   running NEXUS AI yourself, but relevant if the software is ever distributed.
+
+### Multi-agent workflows (Stage 8)
+
+- **Flow (`app/orchestration/engine.py`):** owner objective → **CEO plan**
+  (≤ 4 department assignments with dependencies) → **owner approval** (enforced in the
+  backend; departments can be removed) → for each assignment, once its dependencies are
+  done: **supervisor breakdown** into ≤ 2 worker tasks (skipped when the supervisor is
+  the only member) → **workers** deliver → **supervisor review** (approve, or one
+  revision with concrete feedback) → **department summary** (when more than one task)
+  → **CEO report** consolidating every department and listing what did not complete.
+- **Structured replies** (plan, breakdown, review) are JSON, validated in code
+  (`plans.py`): departments must exist and have available staff, assignees must be on
+  the team, ids unique, dependencies a DAG, sizes within limits. Unusable replies are
+  retried once with the validation error as feedback.
+- **Hard limits — no infinite loops:** ≤ 4 assignments, ≤ 2 tasks each, ≤ 1 revision
+  per task, ≤ 2 attempts per step, a per-workflow cap on model requests (default 45,
+  checked before every call), and a 45-minute run limit. Agents can't create workflows.
+- **Failure handling:** transient errors (timeouts, rate limits, 5xx, empty replies)
+  are retried once; budget exhaustion, the emergency stop, a missing key or model
+  **pause** the workflow (the step goes back to waiting, Resume continues); other
+  errors fail the task. A failed dependency **skips** its dependents; the CEO's report
+  lists what did not complete (status "completed with failures"). Reviews and summaries
+  that fail fall back openly (accepted without review / team results used as-is).
+- **Owner control:** approve (with departments removed), cancel the workflow or a single
+  task (in-flight steps are stopped and awaited first), resume after a pause or
+  failure. A restart pauses running workflows; nothing resumes on its own.
+- **Interdepartment communication:** a dependency's result is handed to the dependent
+  department as data ("hand-off"), shown in the timeline (`workflow_events`) with the
+  delegation, assignments, deliveries, reviews, retries and failures.
+- **Live office:** `ActivityTracker` derives each employee's real status — `working`
+  (planning, working on a task, summarising, consolidating; also chat replies),
+  `reviewing`, `assigned` (tasks waiting), `completed` / `error` for a few seconds after
+  a task — so the 3D office shows who is doing what. Statuses are published over
+  `/api/events` with `workflow.updated`, `workflow.event` and `task.updated`.
+- **Chat:** "Delegate to CEO" on any owner message starts a workflow; NEXUS AI posts
+  notices (system messages, never attributed to a model, never sent to models) and the
+  CEO's final report is posted in that conversation. A recorded task can be handed to
+  the CEO from its department's task board and is marked done when the workflow
+  completes.
+- **Honesty:** agents produce text only (no browsing, email or spending) and are told
+  not to invent facts; the report says it is model-generated with assumptions to verify.
 
 ### Performance budget and measurements
 

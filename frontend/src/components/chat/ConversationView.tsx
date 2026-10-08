@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { type ChangeEvent, type FormEvent, type KeyboardEvent, useEffect, useLayoutEffect, useRef, useState } from "react";
 
 import { Initials } from "@/components/hq/people";
@@ -9,6 +10,7 @@ import { attachmentUrl, type Conversation, formatBytes, MAX_FILE_BYTES, MAX_FILE
 import { type Addressee, responderFor } from "@/lib/routing";
 import { speechPlayer } from "@/lib/speech";
 import { installed } from "@/lib/voice";
+import { createWorkflow } from "@/lib/workflows";
 import { STATUS_META } from "@/world/characters/status";
 import { useChatStore } from "@/world/state/chatStore";
 import { useDepartmentStore } from "@/world/state/departmentStore";
@@ -67,6 +69,7 @@ function MessageItem({
   highlight,
   speaking,
   canListen,
+  onDelegate,
 }: {
   m: Message;
   state: ReplyState | null;
@@ -78,6 +81,7 @@ function MessageItem({
   /** This message is being read aloud ("loading" | "speaking") or not. */
   speaking: string | null;
   canListen: boolean;
+  onDelegate: (m: Message) => void;
 }) {
   const departmentName = useDepartmentStore((s) => s.departments.find((d) => d.key === m.author_department)?.name);
   const [copied, setCopied] = useState(false);
@@ -95,6 +99,11 @@ function MessageItem({
       <button type="button" onClick={() => onTask(m)} className="hover:text-nx-cyan">
         Create task
       </button>
+      {m.role === "owner" && m.content.trim().length >= 10 && (
+        <button type="button" onClick={() => onDelegate(m)} className="hover:text-nx-cyan" title="Ask the CEO to plan this as a multi-department workflow (you approve the plan before anything runs)">
+          Delegate to CEO
+        </button>
+      )}
       {m.content.trim() && (
         <button type="button" onClick={copy} className="hover:text-nx-cyan">
           {copied ? "Copied" : "Copy"}
@@ -114,6 +123,17 @@ function MessageItem({
   );
   const audio = m.input_mode === "voice" ? m.attachments.find((a) => a.content_type.startsWith("audio/")) : undefined;
   const files = m.attachments.filter((a) => a !== audio);
+
+  if (m.role === "system") {
+    return (
+      <li className="flex justify-center" data-testid="message" data-role="system" id={`message-${m.id}`}>
+        <div className="max-w-[min(40rem,92%)] rounded-xl bg-white/[0.03] px-4 py-2 text-center text-xs text-nx-muted ring-1 ring-nx-line">
+          <Markdown text={m.content} />
+          <span className="mt-0.5 block text-[10px] text-nx-faint">NEXUS AI · {time(m.created_at)}</span>
+        </div>
+      </li>
+    );
+  }
 
   if (m.role === "owner") {
     return (
@@ -207,6 +227,7 @@ export function ConversationView({
   onBack: () => void;
   highlightMessage: number | null;
 }) {
+  const router = useRouter();
   const employees = useEmployeeStore((s) => s.employees);
   const departments = useDepartmentStore((s) => s.departments);
   const id = conversation?.id ?? null;
@@ -424,6 +445,12 @@ export function ConversationView({
               highlight={m.id === highlightMessage}
               speaking={voice.speech.messageId === m.id ? voice.speech.status : null}
               canListen={ttsReady}
+              onDelegate={(msg) =>
+                void act(async () => {
+                  const workflow = await createWorkflow({ source_message_id: msg.id });
+                  router.push(`/workflows/${workflow.id}`);
+                })
+              }
               onRetry={() => id && void act(() => useChatStore.getState().retry(id))}
               onTask={(msg) =>
                 id &&

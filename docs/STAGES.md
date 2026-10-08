@@ -11,8 +11,8 @@ reported, and the next stage starts only after the owner's explicit approval.
 | 4 | Departments & organisational structure | ✅ Approved |
 | 5 | NVIDIA AI connection | ✅ Approved |
 | 6 | Text communication | ✅ Approved |
-| 7 | Voice communication | ✅ Complete, awaiting approval for Stage 8 |
-| 8 | Multi-agent task orchestration | ⏳ Not started |
+| 7 | Voice communication | ✅ Approved |
+| 8 | Multi-agent task orchestration | ✅ Complete, awaiting approval for Stage 9 |
 | 9 | Email integration | ⏳ Not started |
 | 10 | Employee profiles & ratings | ⏳ Not started |
 | 11 | Executive dashboard & project management | ⏳ Not started |
@@ -217,3 +217,30 @@ CEO → Aria Vance (698 ms, 2.8 s). Each reply introduced the right person and d
 | Whisper small, same clips | 4.0–8.5 s |
 | Piper, per second of speech | ~0.1–0.15 s |
 | First spoken part of a reply (UI) | 1.1 s (English), 2.6 s (Arabic) |
+
+---
+
+## Stage 8 — Multi-agent task orchestration
+
+**Completed:** 2026-10-08 · **Commit:** "Stage 8: multi-agent orchestration"
+
+### Acceptance criteria
+
+| Criterion | Result | Evidence |
+| --- | --- | --- |
+| CEO delegates work | PASS | Real NVIDIA runs: Aria Vance planned and delegated to 3 departments each time; backend + e2e tests |
+| Multiple agents execute relevant subtasks | PASS | Real run 2: Marcus Bell → Diego Alvarez (Sales), Iris Wong → Felix Schmidt (Engineering), Elena Rossi (Marketing); supervisor reviews approved the work |
+| Results are consolidated | PASS | The CEO's final report covers every department; posted on the workflow and in the source chat |
+| Failed tasks are reported | PASS | Tests: failed task → department failed → dependents skipped → report lists what did not complete ("completed with failures"); timeline shows each failure |
+| Workflow can be cancelled | PASS | Tests + e2e: in-flight steps stopped and awaited, every open task cancelled, no further requests |
+| No infinite agent loops | PASS | Hard limits in code (≤ 4 departments, ≤ 2 tasks, ≤ 1 revision, ≤ 2 attempts, request cap, 45 min); tests force repeated "revise" and the request cap |
+
+### Real-account demonstrations (copy of the dev database)
+
+| Objective | Plan | Requests | Time |
+| --- | --- | --- | --- |
+| "Research a new software business opportunity and create an implementation plan." (the spec's example) | Market Research → Product → Finance (chained hand-offs) | 5 | 87 s |
+| "Plan the launch of our new AI meeting-notes app…" | Marketing, Sales, Engineering in parallel; supervisors assigned workers and reviewed | 10 | 116 s |
+
+Both used `nvidia/nemotron-3-super-120b-a12b`; departments whose only member is the
+supervisor do the work directly (no self-review).

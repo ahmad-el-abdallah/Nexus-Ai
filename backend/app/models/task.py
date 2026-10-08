@@ -1,20 +1,42 @@
-"""Tasks recorded for departments. Stage 6 creates them from chat; the
-orchestration engine that executes them arrives in Stage 8."""
+"""Tasks: recorded by the owner (e.g. from chat) or created by a workflow.
+
+Workflow tasks come in two kinds:
+  * "assignment" — the CEO's assignment to one department (its supervisor plans it);
+  * "work"       — a worker task inside an assignment, reviewed by the supervisor.
+Owner-recorded tasks ("manual") stay "open" until the owner cancels them or hands
+them to the CEO as a workflow.
+"""
 
 from __future__ import annotations
 
+from datetime import datetime
 from enum import StrEnum
 
-from sqlalchemy import ForeignKey, Integer, String, Text
+from sqlalchemy import JSON, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
-from app.db.base import Base, TimestampMixin
+from app.db.base import Base, TimestampMixin, UTCDateTime
 
 
 class TaskStatus(StrEnum):
-    # Recorded but not started: nothing executes tasks before Stage 8.
+    # Manual tasks
     OPEN = "open"
+    # Workflow tasks
+    PROPOSED = "proposed"  # in a plan awaiting the owner's approval
+    QUEUED = "queued"  # ready to start once its dependencies are done
+    PLANNING = "planning"  # assignment: the supervisor is splitting it into tasks
+    ACTIVE = "active"  # assignment: its worker tasks are in progress
+    RUNNING = "running"  # work: the assignee is producing the result
+    AWAITING_REVIEW = "awaiting_review"  # work: result ready for the supervisor
+    REVIEWING = "reviewing"  # work: the supervisor is reviewing it
+    SUMMARIZING = "summarizing"  # assignment: the supervisor is writing the summary
+    DONE = "done"
+    FAILED = "failed"
+    SKIPPED = "skipped"  # a dependency failed or was cancelled
     CANCELLED = "cancelled"
+
+
+TERMINAL = {TaskStatus.DONE, TaskStatus.FAILED, TaskStatus.SKIPPED, TaskStatus.CANCELLED}
 
 
 class Task(TimestampMixin, Base):
@@ -36,3 +58,34 @@ class Task(TimestampMixin, Base):
     source_message_id: Mapped[int | None] = mapped_column(
         Integer, ForeignKey("messages.id", ondelete="SET NULL"), nullable=True
     )
+    # --- Workflow tasks (Stage 8) --------------------------------------------
+    kind: Mapped[str] = mapped_column(
+        String(16), nullable=False, default="manual", server_default="manual"
+    )
+    workflow_id: Mapped[str | None] = mapped_column(
+        String(32), ForeignKey("workflows.id", ondelete="CASCADE"), nullable=True, index=True
+    )
+    parent_id: Mapped[str | None] = mapped_column(
+        String(32), ForeignKey("tasks.id", ondelete="CASCADE"), nullable=True, index=True
+    )
+    # Task ids this one waits for (assignments only).
+    depends_on: Mapped[list[str]] = mapped_column(
+        JSON, nullable=False, default=list, server_default="[]"
+    )
+    position: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+    attempts: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+    revisions: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+    # The deliverable (Markdown) and the supervisor's last review notes.
+    result: Mapped[str | None] = mapped_column(Text, nullable=True)
+    review_notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Real measurements, summed over this task's model calls.
+    calls: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+    prompt_tokens: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default="0"
+    )
+    completion_tokens: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default="0"
+    )
+    started_at: Mapped[datetime | None] = mapped_column(UTCDateTime(), nullable=True)
+    finished_at: Mapped[datetime | None] = mapped_column(UTCDateTime(), nullable=True)

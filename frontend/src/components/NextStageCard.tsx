@@ -1,6 +1,13 @@
 import { CURRENT_STAGE, STAGES } from "@/lib/stages";
 
 const NEXT_STAGE_SCOPE: Record<number, string[]> = {
+  9: [
+    "Connect a company email account you choose (OAuth or SMTP/IMAP)",
+    "Credentials stored encrypted, never shown again",
+    "Agents draft emails; you approve before anything is sent",
+    "Inbox reading and reply drafting (incoming mail treated as untrusted)",
+    "Connection tests, email logs and a disconnect flow — no duplicate sends",
+  ],
   8: [
     "CEO delegation to department supervisors and workers",
     "Structured tasks with dependencies, reviews and retries",

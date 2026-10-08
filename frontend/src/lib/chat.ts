@@ -20,7 +20,8 @@ export interface Message {
   id: number;
   conversation_id: string;
   created_at: string;
-  role: "owner" | "agent";
+  /** "system": a notice from NEXUS AI itself (e.g. workflow progress), never a model's words. */
+  role: "owner" | "agent" | "system";
   employee_id: string | null;
   author_name: string | null;
   author_role: string | null;
@@ -57,18 +58,65 @@ export interface Conversation {
   match: { message_id: number | null; snippet: string } | null;
 }
 
+export type TaskStatus =
+  | "open"
+  | "proposed"
+  | "queued"
+  | "planning"
+  | "active"
+  | "running"
+  | "awaiting_review"
+  | "reviewing"
+  | "summarizing"
+  | "done"
+  | "failed"
+  | "skipped"
+  | "cancelled";
+
 export interface Task {
   id: string;
   title: string;
   description: string;
   department: string;
   assignee_id: string | null;
-  status: "open" | "cancelled";
+  status: TaskStatus;
   source_conversation_id: string | null;
   source_message_id: number | null;
   created_at: string;
   updated_at: string;
+  /** "manual" (recorded by the owner), "assignment" (CEO → department) or "work" (a worker's task). */
+  kind: "manual" | "assignment" | "work";
+  workflow_id: string | null;
+  parent_id: string | null;
+  depends_on: string[];
+  position: number;
+  attempts: number;
+  revisions: number;
+  result: string | null;
+  review_notes: string | null;
+  error: string | null;
+  calls: number;
+  prompt_tokens: number;
+  completion_tokens: number;
+  started_at: string | null;
+  finished_at: string | null;
 }
+
+export const TASK_STATUS_LABEL: Record<TaskStatus, string> = {
+  open: "Open · not started",
+  proposed: "Proposed",
+  queued: "Waiting",
+  planning: "Supervisor planning",
+  active: "In progress",
+  running: "Working",
+  awaiting_review: "Ready for review",
+  reviewing: "In review",
+  summarizing: "Summarising",
+  done: "Done",
+  failed: "Failed",
+  skipped: "Skipped",
+  cancelled: "Cancelled",
+};
 
 /** Who a new conversation is addressed to. */
 export type Target = { kind: "employee"; employee_id: string } | { kind: "department"; department: string };
@@ -101,7 +149,9 @@ export function sendMessage(id: string, content: string, files: File[] = [], inp
 
 export const attachmentUrl = (id: string) => `/api/attachments/${id}`;
 
-export function fetchTasks(params: { department?: string; status?: string; conversation_id?: string } = {}) {
+export function fetchTasks(
+  params: { department?: string; status?: string; conversation_id?: string; workflow_id?: string; assignee_id?: string; kind?: string } = {},
+) {
   const query = new URLSearchParams(Object.entries(params).filter(([, v]) => v) as [string, string][]);
   return request<Task[]>(`/api/tasks${query.size ? `?${query}` : ""}`);
 }

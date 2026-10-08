@@ -12,10 +12,13 @@ from app.models.chat import (
 from app.models.department import Department
 from app.models.employee import Employee, EmployeeStatus
 from app.models.system import SystemMetadata
-from app.models.task import Task, TaskStatus
+from app.models.task import TERMINAL, Task, TaskStatus
 from app.models.voice import VoiceSettings
+from app.models.workflow import FINISHED, Workflow, WorkflowEvent, WorkflowStatus
 
 __all__ = [
+    "FINISHED",
+    "TERMINAL",
     "AIModel",
     "AIProviderSettings",
     "AIUsage",
@@ -32,4 +35,7 @@ __all__ = [
     "Task",
     "TaskStatus",
     "VoiceSettings",
+    "Workflow",
+    "WorkflowEvent",
+    "WorkflowStatus",
 ]

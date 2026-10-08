@@ -257,7 +257,9 @@ class AIGateway:
         model: str | None = None,
         purpose: str,
         max_tokens: int | None = None,
+        context: str | None = None,
     ) -> tuple[Completion, Route, CallStats]:
+        """One non-streamed call. `context` extends the employee's system prompt."""
         cfg = await self.config(session)
         route = await self.resolve(session, cfg, employee_id, model)
         base = {
@@ -276,7 +278,10 @@ class AIGateway:
             raise
         if route.employee:
             messages = [
-                {"role": "system", "content": system_prompt(route.employee, route.department)},
+                {
+                    "role": "system",
+                    "content": system_prompt(route.employee, route.department, context),
+                },
                 *messages,
             ]
         stats = CallStats()

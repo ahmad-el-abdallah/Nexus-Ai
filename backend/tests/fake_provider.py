@@ -13,6 +13,8 @@ from collections.abc import AsyncIterator
 from fastapi import FastAPI, Header, HTTPException, Request
 from fastapi.responses import StreamingResponse
 
+from tests.fake_agents import canned_reply
+
 FAKE_KEY = "fake-e2e-key-0123456789abcdef"
 REPLY = "Hello from the NEXUS test provider."
 
@@ -44,6 +46,15 @@ async def chat(
     if body["model"] == "fake/locked":
         raise HTTPException(404, {"detail": "Function not found for account"})
     if not body.get("stream"):
+        # Workflow steps (plan, breakdown, work, review, summary, report) get valid replies.
+        canned = canned_reply(body["messages"][-1]["content"])
+        if canned is not None:
+            await asyncio.sleep(0.4)  # long enough for the UI to show each step
+            return {
+                "model": body["model"],
+                "choices": [{"message": {"content": canned}, "finish_reason": "stop"}],
+                "usage": {"prompt_tokens": 120, "completion_tokens": 60},
+            }
         return {
             "model": body["model"],
             "choices": [{"message": {"content": "ready"}, "finish_reason": "stop"}],

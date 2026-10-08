@@ -135,6 +135,18 @@ docs/      architecture, development, stages, ADRs, design references
   tests never call NVIDIA: unit tests use `httpx.MockTransport`, e2e uses
   `backend/tests/fake_provider.py`.
 
+## Workflows
+
+- **API:** `GET/POST /api/workflows` (`objective`, or `source_message_id` /
+  `source_task_id`; optional `max_calls`), `GET /api/workflows/{id}` (plan, tasks,
+  timeline, report, estimate), `POST …/{id}/approve` (`{"exclude": [assignment ids]}`),
+  `POST …/{id}/cancel`, `POST …/{id}/resume`, `POST …/{id}/tasks/{task_id}/cancel`.
+- Every agent step is a real model request through the AI gateway (purposes
+  `workflow_plan`, `workflow_breakdown`, `workflow_work`, `workflow_review`,
+  `workflow_summary`, `workflow_report` in the usage dashboard).
+- **Tests** never call NVIDIA: `tests/fake_agents.py` answers each step format with a
+  valid canned reply (used by `test_workflows.py` and by the e2e fake provider).
+
 ## Voice
 
 - **Install models** in Settings → Voice (or `POST /api/voice/models/{id}/install`).

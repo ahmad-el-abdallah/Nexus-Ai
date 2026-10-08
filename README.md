@@ -7,12 +7,12 @@ interactive 3D headquarters. Every department, employee, desk and meeting room m
 real system functionality: real tasks, real model calls, real approvals. Nothing on
 screen is simulated.
 
-> **Status: Stage 7 of 16 — Voice communication.** Talk to the CEO, departments and
-> employees by voice in **Chat**: speech is transcribed on this computer (Whisper), you
-> review the transcript, and replies can be read aloud in each employee's own voice
-> (Piper) — English and Arabic. Install the speech models once in **Settings → Voice**.
-> Text chat, search, attachments and tasks from Stage 6 keep working. See
-> [`docs/STAGES.md`](docs/STAGES.md).
+> **Status: Stage 8 of 16 — Multi-agent orchestration.** Give the CEO an objective in
+> **Workflows** (or "Delegate to CEO" from chat): the CEO plans which departments do what,
+> you approve the plan, supervisors split the work among their teams, workers deliver,
+> supervisors review, and the CEO consolidates the final report — with dependencies,
+> retries, cancellation and hard limits, live in the 3D office. Chat and voice from
+> Stages 6–7 keep working. See [`docs/STAGES.md`](docs/STAGES.md).
 
 ## Quick start
 

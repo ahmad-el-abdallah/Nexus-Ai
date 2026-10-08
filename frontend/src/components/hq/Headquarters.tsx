@@ -64,15 +64,20 @@ function StaffChip() {
   const remote = employees.filter((e) => !e.desk_id).length;
   const counts = new Map<string, number>();
   for (const e of employees) counts.set(e.status, (counts.get(e.status) ?? 0) + 1);
-  const summary = [...counts.entries()]
+  // Full breakdown on hover; the chip itself stays short so the header never overflows.
+  const breakdown = [...counts.entries()]
     .sort((a, b) => b[1] - a[1])
     .map(([status, n]) => `${n} ${STATUS_META[status as keyof typeof STATUS_META].label.toLowerCase()}`)
     .join(" · ");
+  const idle = counts.get("idle") ?? 0;
+  const suspended = counts.get("suspended") ?? 0;
+  const busy = employees.length - idle - suspended;
+  const summary = [`${idle} idle`, busy ? `${busy} busy` : null, suspended ? `${suspended} suspended` : null].filter(Boolean).join(" · ");
   return (
     <span
       data-testid="staff-chip"
       className="hidden h-10 shrink-0 items-center gap-2 rounded-xl bg-nx-bg/70 px-3 text-xs whitespace-nowrap text-nx-muted ring-1 ring-nx-line-strong backdrop-blur-md xl:flex"
-      title="AI employees by current status"
+      title={`AI employees by current status: ${breakdown}`}
     >
       <span className="font-semibold text-nx-text">{employees.length} AI employees</span>
       {summary}

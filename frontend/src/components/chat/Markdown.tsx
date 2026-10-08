@@ -1,16 +1,20 @@
 "use client";
 
+import Link from "next/link";
 import { memo } from "react";
 import ReactMarkdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
 
 const components: Components = {
-  // Model output may contain links: open them outside the app, without referrer.
-  a: ({ href, children }) => (
-    <a href={href} target="_blank" rel="noopener noreferrer nofollow">
-      {children}
-    </a>
-  ),
+  // Links to pages of this app stay in the app; anything else opens outside it, without referrer.
+  a: ({ href, children }) =>
+    typeof href === "string" && href.startsWith("/") && !href.startsWith("//") ? (
+      <Link href={href}>{children}</Link>
+    ) : (
+      <a href={href} target="_blank" rel="noopener noreferrer nofollow">
+        {children}
+      </a>
+    ),
   // Never load remote images from model output; show the link instead.
   img: ({ src, alt }) => (
     <a href={typeof src === "string" ? src : undefined} target="_blank" rel="noopener noreferrer nofollow">

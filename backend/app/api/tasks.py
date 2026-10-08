@@ -63,10 +63,19 @@ async def list_tasks(
     department: str | None = None,
     status: TaskStatus | None = None,
     conversation_id: str | None = None,
+    workflow_id: str | None = None,
+    assignee_id: str | None = None,
+    kind: str | None = None,
 ) -> list[Task]:
     query = select(Task)
     if department:
         query = query.where(Task.department == department)
+    if workflow_id:
+        query = query.where(Task.workflow_id == workflow_id)
+    if assignee_id:
+        query = query.where(Task.assignee_id == assignee_id)
+    if kind:
+        query = query.where(Task.kind == kind)
     if status:
         query = query.where(Task.status == status.value)
     if conversation_id:
@@ -93,6 +102,8 @@ async def create_task(body: TaskCreate, session: Session, request: Request) -> T
         department=body.department,
         assignee_id=body.assignee_id,
         status=TaskStatus.OPEN.value,
+        kind="manual",
+        depends_on=[],
         source_conversation_id=body.source_conversation_id,
         source_message_id=body.source_message_id,
     )
@@ -108,6 +119,10 @@ async def update_task(task_id: str, body: TaskPatch, session: Session, request: 
     task = await session.get(Task, task_id)
     if task is None:
         raise HTTPException(404, "Task not found")
+    if task.kind != "manual":
+        raise HTTPException(409, "Workflow tasks are managed by their workflow; cancel them there.")
+    if body.status is not None and body.status not in (TaskStatus.OPEN, TaskStatus.CANCELLED):
+        raise HTTPException(422, "A recorded task can only be open or cancelled.")
     fields = body.model_fields_set
     if "assignee_id" in fields:
         await _check_assignee(session, task.department, body.assignee_id)

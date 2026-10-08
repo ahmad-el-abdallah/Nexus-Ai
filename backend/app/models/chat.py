@@ -19,6 +19,7 @@ class ConversationKind(StrEnum):
 class MessageRole(StrEnum):
     OWNER = "owner"
     AGENT = "agent"
+    SYSTEM = "system"  # notices from NEXUS AI itself (e.g. workflow updates), never from a model
 
 
 class MessageStatus(StrEnum):

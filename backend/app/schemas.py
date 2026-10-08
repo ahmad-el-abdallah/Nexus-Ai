@@ -107,8 +107,24 @@ class TaskOut(BaseModel):
     status: str
     source_conversation_id: str | None
     source_message_id: int | None
-    created_at: datetime
-    updated_at: datetime
+    created_at: datetime | None
+    updated_at: datetime | None
+    # Workflow tasks (Stage 8)
+    kind: str = "manual"
+    workflow_id: str | None = None
+    parent_id: str | None = None
+    depends_on: list[str] = []
+    position: int = 0
+    attempts: int = 0
+    revisions: int = 0
+    result: str | None = None
+    review_notes: str | None = None
+    error: str | None = None
+    calls: int = 0
+    prompt_tokens: int = 0
+    completion_tokens: int = 0
+    started_at: datetime | None = None
+    finished_at: datetime | None = None
 
 
 def dump(model: BaseModel) -> dict[str, Any]:

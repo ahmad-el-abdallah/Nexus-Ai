@@ -9,6 +9,9 @@ import { useDepartmentStore } from "@/world/state/departmentStore";
 import { useEmployeeStore } from "@/world/state/employeeStore";
 
 import { ConversationView } from "./ConversationView";
+
+const push = vi.fn();
+vi.mock("next/navigation", () => ({ useRouter: () => ({ push, replace: vi.fn() }) }));
 import { TaskDialog } from "./TaskDialog";
 
 const initialChat = useChatStore.getState();
@@ -229,6 +232,29 @@ describe("ConversationView", () => {
     expect((form.get("files") as File).name).toBe("notes.md");
     expect(new Headers(calls[1][1].headers).get("content-type")).toBeNull();
     expect(useChatStore.getState().messages.cnv_new.map((m) => m.id)).toEqual([1, 2]);
+  });
+
+  it("shows NEXUS AI notices apart from the conversation and lets the owner delegate to the CEO", async () => {
+    const fetchMock = vi.fn(async () => json({ id: "wf_1", status: "planning" }, 201));
+    vi.stubGlobal("fetch", fetchMock);
+    useChatStore.setState({
+      messages: {
+        cnv_1: [
+          message({ id: 1, role: "owner", employee_id: null, author_name: null, content: "Research a new software business opportunity." }),
+          message({ id: 2, role: "system", employee_id: null, author_name: null, content: "Workflow started. [Open workflow](/workflows/wf_1)" }),
+        ],
+      },
+      messageLoad: { cnv_1: "ready" },
+    });
+    view();
+    const notice = screen.getAllByTestId("message").find((el) => el.dataset.role === "system")!;
+    expect(notice).toHaveTextContent("Workflow started.");
+    expect(within(notice).getByRole("link", { name: "Open workflow" })).toHaveAttribute("href", "/workflows/wf_1");
+    expect(within(notice).getByRole("link", { name: "Open workflow" })).not.toHaveAttribute("target");
+    fireEvent.click(screen.getByRole("button", { name: "Delegate to CEO" }));
+    await waitFor(() => expect(push).toHaveBeenCalledWith("/workflows/wf_1"));
+    const post = (fetchMock.mock.calls as unknown as [string, RequestInit][]).find(([url]) => url === "/api/workflows")!;
+    expect(JSON.parse(post[1].body as string)).toEqual({ source_message_id: 1 });
   });
 
   it("rejects oversized attachments before uploading", () => {

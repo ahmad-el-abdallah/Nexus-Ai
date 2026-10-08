@@ -25,6 +25,8 @@ export const LIVE_EVENTS = [
   "task.updated",
   "voice.updated",
   "voice.settings",
+  "workflow.updated",
+  "workflow.event",
 ] as const;
 export type LiveEventType = (typeof LIVE_EVENTS)[number];
 
