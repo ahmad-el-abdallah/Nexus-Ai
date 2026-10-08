@@ -451,6 +451,23 @@ cosmetic and is visibly distinct from work state.
   externally with `noopener noreferrer`, and remote images are shown as links, never
   loaded.
 
+### Company knowledge for every employee
+
+Every AI call made for an employee (chat, voice, workflows, email drafts) carries a live
+briefing built from the database at that moment (`app/services/company.py`), scoped by
+position like a real company:
+
+| Level | Who | Sees |
+| --- | --- | --- |
+| Staff | everyone | Company directory (departments, directors, headcount, busy/suspended, open tasks), their manager, their team (roles, gender, status, desk/remote, current tasks), their own tasks |
+| Director | department directors, director/executive seniority | + their team's track record (tasks completed/failed) and the workflows their department is in |
+| Executive | Executive Management | Every team in that detail, all running and recent workflows, email approval queue counts |
+
+Agents are told the data is real and current, to answer with names and numbers, never to
+claim they lack access to what is listed, and that NEXUS doesn't record ratings,
+salaries or private data yet. Measured size: ~4 kB for staff/directors, ~12.7 kB for the
+CEO (capped at 14 kB).
+
 ### Voice communication (Stage 7)
 
 - **Everything runs on this computer.** Speech → text uses **faster-whisper** (Whisper

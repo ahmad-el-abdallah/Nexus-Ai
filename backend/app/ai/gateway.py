@@ -30,6 +30,7 @@ from app.core.config import Settings
 from app.core.logging import get_logger
 from app.db.session import Database
 from app.models import AIModel, AIProviderSettings, AIUsage, Department, Employee
+from app.services.company import company_briefing
 
 log = get_logger("nexus.ai")
 
@@ -258,6 +259,13 @@ class AIGateway:
         delay = min(error.retry_after, MAX_RETRY_AFTER) if error.retry_after else 2**attempt * 0.75
         await self.sleep(delay + random.uniform(0, 0.25))  # noqa: S311 - jitter, not security
 
+    async def _context_with_company(
+        self, session: AsyncSession, employee: Employee, context: str | None
+    ) -> str:
+        """Every employee answers with the live company data their position gives access to."""
+        briefing = await company_briefing(session, employee)
+        return "\n\n".join(part for part in (context, briefing) if part)
+
     # --------------------------------------------------------------- requests
 
     async def complete(
@@ -292,7 +300,11 @@ class AIGateway:
             messages = [
                 {
                     "role": "system",
-                    "content": system_prompt(route.employee, route.department, context),
+                    "content": system_prompt(
+                        route.employee,
+                        route.department,
+                        await self._context_with_company(session, route.employee, context),
+                    ),
                 },
                 *messages,
             ]
@@ -380,7 +392,11 @@ class AIGateway:
             messages = [
                 {
                     "role": "system",
-                    "content": system_prompt(route.employee, route.department, context),
+                    "content": system_prompt(
+                        route.employee,
+                        route.department,
+                        await self._context_with_company(session, route.employee, context),
+                    ),
                 },
                 *messages,
             ]

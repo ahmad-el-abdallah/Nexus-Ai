@@ -283,3 +283,13 @@ sent, rejected and the email log. Design: [`adr/0002-email-sending.md`](adr/0002
   a raised Arabic voice (no female Arabic voice exists locally), use feminine Arabic
   forms, and look the part in the 3D office (no beards, matching hair).
 
+### Follow-up (owner request): employees know their company
+
+Directors said they had no access to their own team and the CEO knew nothing about other
+departments: agents only had their own name, role and department description. Every AI
+call now includes a live briefing from the records, scoped by position (staff: team +
+directory; directors: + team workload and track record; executives: the whole company,
+workflows and the email queue). Verified with the real model: the Sales director listed
+his five team members and their current work; the CEO answered in Arabic with all 20
+departments, Marketing's headcount and Finance's director.
+
