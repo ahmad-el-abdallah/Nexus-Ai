@@ -1,0 +1,273 @@
+# NEXUS AI — Architecture
+
+This document describes the **target** architecture for all 16 stages, along with what
+exists today. Sections are tagged with the stage that implements them. Anything not yet
+built is labelled *planned*. Decisions and their rationale live in [`adr/`](adr).
+
+---
+
+## 1. Guiding principles
+
+1. **The backend is the single source of truth.** Agent status, task state, approvals
+   and metrics live in the database. The 3D office is a *projection* of that state,
+   driven by backend events. An avatar typing is never evidence that work is happening.
+2. **No fabrication.** We never invent metrics, research, conversations between agents,
+   completed work or provider results. Unknown values are shown as unknown ("Not enough
+   data", "Planned · Stage N").
+3. **Enforcement lives in code, not in prompts.** Permissions, approvals, budgets and
+   rate limits are checked in the service layer before any side effect. A prompt that
+   says "ask for permission" is never the control.
+4. **Secrets are server-side only.** They are read from the environment or from
+   encrypted database columns. They are never sent to the browser, written to logs or
+   committed.
+5. **Agents run on demand.** No agent holds a model session open. An agent is a
+   configuration plus memory, and it is invoked only when a task needs it.
+6. **Bounded autonomy.** Every multi-agent workflow is an explicit state machine with
+   step limits, budgets and cancellation. There are no open-ended agent-to-agent loops.
+7. **Free and local by default.** No mandatory paid services, no silent paid fallbacks,
+   and everything binds to `127.0.0.1`.
+
+## 2. System context
+
+```mermaid
+flowchart LR
+  owner([Owner · browser])
+  subgraph local["Owner's machine"]
+    web["Next.js frontend<br/>UI · 3D office · chat · voice"]
+    api["FastAPI backend<br/>API · orchestration · gateways"]
+    db[("SQLite / PostgreSQL")]
+    stt["Local speech<br/>whisper.cpp / Piper (optional)"]
+  end
+  nim["NVIDIA inference<br/>(build.nvidia.com / NIM)"]
+  mail["Email providers<br/>Gmail · Microsoft 365 · SMTP/IMAP"]
+
+  owner -->|HTTPS/HTTP| web
+  web -->|"/api/* (proxied REST)"| api
+  owner -.->|"WebSocket (Stage 6)"| api
+  api --> db
+  api -->|"server-side key"| nim
+  api -->|"OAuth / SMTP (Stage 9)"| mail
+  api -.-> stt
+```
+
+- **REST** traffic goes through Next.js `rewrites` (`/api/*` → FastAPI). The browser
+  never learns the backend address and CORS is not needed for normal use.
+  - In `next dev`, the proxy target is read at startup.
+  - In a production build it is **fixed at build time**, so changing
+    `NEXUS_BACKEND_URL` requires rebuilding.
+- **Realtime** traffic (Stage 6+) uses a WebSocket from the browser directly to FastAPI,
+  because Next.js rewrites don't proxy WebSockets. The socket is protected by an origin
+  allowlist and a session token.
+
+## 3. Containers and modules
+
+### Frontend (`frontend/`, Next.js 16 · React 19 · TypeScript · Tailwind 4)
+
+| Module | Stage | Responsibility |
+| --- | --- | --- |
+| `src/app/` | 1 | Routes, layout, design tokens (`globals.css`), `/healthz` |
+| `src/lib/api.ts` | 1 | Typed same-origin API client |
+| `src/lib/webgl.ts` | 1 | WebGL2 detection, which picks 3D or the 2D fallback |
+| `src/components/` | 1+ | Shared UI (status, panels, cards) |
+| `src/world/` | 2–3, 14 | *Planned.* React Three Fiber scene: building, rooms, furniture, avatars, camera |
+| `src/world2d/` | 2 | *Planned.* 2D office plan fallback when WebGL2 is unavailable |
+| `src/features/*` | 4+ | *Planned.* Org chart, chat, voice, meetings, projects, email, settings |
+| `src/stores/` | 3+ | *Planned.* Client state (Zustand) hydrated from REST and patched by WS events |
+| `src/realtime/` | 6 | *Planned.* WebSocket client, reconnect/backoff, event → store reducer |
+
+### Backend (`backend/`, Python 3.12 · FastAPI · SQLAlchemy 2 async · Alembic)
+
+| Module | Stage | Responsibility |
+| --- | --- | --- |
+| `app/core/config.py` | 1 | Typed settings from env; secrets as `SecretStr` |
+| `app/core/logging.py` | 1 | structlog JSON/console output; secret redaction on every record |
+| `app/core/middleware.py` | 1 | Request IDs, access logs |
+| `app/db/` | 1 | Async engine/session, naming conventions, migration-state checks |
+| `app/api/health.py` | 1 | `/api/health/live`, `/api/health/ready`, `/api/system/info` |
+| `app/models/` | 1+ | ORM models (Stage 1: `system_metadata`) |
+| `app/services/org/` | 4 | *Planned.* Departments, roles, agents, hierarchy, desk assignment |
+| `app/services/ai/` | 5 | *Planned.* AI gateway: provider adapters, model catalog, routing, budgets, usage |
+| `app/services/chat/` | 6 | *Planned.* Conversations, routing to agent/department/CEO, streaming |
+| `app/services/voice/` | 7 | *Planned.* Optional local STT/TTS adapters |
+| `app/services/orchestration/` | 8 | *Planned.* Task state machine, scheduler, delegation, review gates |
+| `app/services/tools/` | 8, 15 | *Planned.* Tool gateway: allowlists, sandboxing, permission checks |
+| `app/services/email/` | 9 | *Planned.* Provider adapters, drafts, approval queue, idempotent sending |
+| `app/services/metrics/` | 10 | *Planned.* Evidence-based ratings with configurable weights |
+| `app/services/projects/` | 11 | *Planned.* Projects, milestones, boards, approvals |
+| `app/services/meetings/` | 12 | *Planned.* Turn-based meeting orchestrator with hard turn limits |
+| `app/services/knowledge/` | 13 | *Planned.* Documents, versions, permission-aware retrieval |
+| `app/events/` | 3, 6 | *Planned.* In-process event bus that fans out to WebSocket subscribers |
+| `app/services/audit/` | 8, 15 | *Planned.* Append-only audit log of sensitive actions |
+
+## 4. Data model (overview)
+
+Each entity is introduced in the stage that needs it. Stage 1 has only
+`system_metadata`, which holds the installation id.
+
+```mermaid
+erDiagram
+  DEPARTMENT ||--o{ AGENT : employs
+  AGENT ||--o{ AGENT : supervises
+  AGENT ||--o{ TASK : "assigned"
+  PROJECT ||--o{ TASK : contains
+  TASK ||--o{ TASK : "depends on / subtask"
+  TASK ||--o{ TASK_EVENT : "state transitions"
+  TASK ||--o{ ARTIFACT : produces
+  TASK ||--o{ APPROVAL : "gated by"
+  CONVERSATION ||--o{ MESSAGE : has
+  MEETING ||--o{ MESSAGE : transcript
+  EMAIL_ACCOUNT ||--o{ EMAIL_DRAFT : sends
+  EMAIL_DRAFT ||--o| APPROVAL : requires
+  AGENT ||--o{ USAGE_RECORD : consumes
+  KNOWLEDGE_DOC ||--o{ KNOWLEDGE_CHUNK : indexed
+```
+
+Conventions:
+- UUID primary keys for domain entities.
+- `created_at` and `updated_at` on every table.
+- Constraint naming conventions (`app/db/base.py`) keep migrations portable between
+  SQLite and PostgreSQL.
+- Sensitive columns, such as OAuth tokens, are encrypted with keys derived from
+  `NEXUS_SECRET_KEY`.
+
+## 5. Key flows (planned)
+
+### 5.1 Task lifecycle (Stage 8)
+
+```mermaid
+stateDiagram-v2
+  [*] --> Created
+  Created --> Planning
+  Planning --> AwaitingApproval: sensitive / high-impact
+  Planning --> Queued
+  AwaitingApproval --> Queued: owner approves
+  AwaitingApproval --> Canceled: owner rejects
+  Queued --> Running
+  Running --> Blocked: missing tool / input / quota
+  Blocked --> Queued: unblocked
+  Running --> Review: needs QA / reviewer
+  Review --> Running: changes requested
+  Review --> Completed
+  Running --> Completed
+  Running --> Failed
+  Failed --> Queued: retry policy (bounded)
+  Created --> Canceled
+  Queued --> Canceled
+  Running --> Canceled
+  Completed --> [*]
+  Failed --> [*]
+  Canceled --> [*]
+```
+
+- Every transition is persisted as a `TASK_EVENT` and published on the event bus.
+- The queue lives in the database, so a restart never silently drops pending work.
+- Workflows carry a step budget, a token budget and a wall-clock limit. Exceeding any of
+  them stops the workflow and reports to the owner.
+
+### 5.2 Owner instruction → delegated work (Stage 8)
+
+1. The owner messages the CEO, a department or an agent through chat or voice.
+2. The CEO orchestrator produces a **structured plan** (JSON schema validated) of
+   subtasks with departments, dependencies and acceptance criteria.
+3. Department supervisors assign worker agents. Workers run tools through the tool
+   gateway, where permissions are checked per call.
+4. Review gates run (QA is independent from the producer). Results are consolidated and
+   reported to the owner with their artifacts.
+
+### 5.3 Email (Stage 9)
+
+The flow is `Draft → Awaiting Approval → Approved → Sending → Sent | Failed`.
+- Each send carries an **idempotency key**, so a retry can never send a duplicate.
+- A message is marked `Sent` only after the provider accepts it.
+- Inbound email is **untrusted data**. It is never interpreted as owner instructions.
+
+### 5.4 Office projection (Stages 3, 6, 14)
+
+`backend event → event bus → WebSocket → client store → avatar state machine`
+
+Avatars play state animations (working, meeting, blocked, error) only for states that
+exist in the backend. Ambient behaviour, such as idle wandering or coffee breaks, is
+cosmetic and is visibly distinct from work state.
+
+## 6. AI gateway (Stage 5)
+
+- A provider interface with an OpenAI-compatible adapter. It covers NVIDIA
+  `integrate.api.nvidia.com/v1` and can also target a local OpenAI-compatible server.
+  Ollama is **not** required.
+- The **model catalog is verified** against the provider's `/models` listing. No model
+  name is assumed to exist.
+- Routing is per department or per agent, with model, temperature and max tokens
+  configured in the database.
+- **Budgets and limits:**
+  - global and per-agent request and token budgets
+  - a concurrency semaphore
+  - retries with exponential backoff on 429/5xx, bounded and idempotent-safe
+  - a global emergency stop
+- **No silent fallback.** When limits are reached, affected tasks move to `Blocked`
+  with a clear reason and the owner is notified. Switching provider is an explicit
+  owner action.
+- Usage records (tokens, latency, status, cost estimate if known) are stored per call.
+
+## 7. Security model
+
+| Concern | Control |
+| --- | --- |
+| Secrets | Env or encrypted DB only; `SecretStr`; log redaction processor; repo secret scan in tests |
+| Network exposure | Servers bind to `127.0.0.1`; CORS allowlist; WS origin check (Stage 6) |
+| Authorization | Permission levels are Read-only, Draft, Internal execution, External (approval), Administrator. They are checked in the service layer (Stage 4, then hardened in Stage 15) |
+| Approvals | Approval records are verified server-side before any external side effect (email, publish, spend, deploy, delete) |
+| Prompt injection | Emails, documents and web content are wrapped as untrusted data. Tools available while processing untrusted content are restricted. Instructions found in such content are never executed |
+| Tool execution | Allowlists, sandboxed execution with no shell by default, filesystem scope limits, timeouts |
+| Audit | Append-only audit log of sensitive actions and authorization failures |
+| Headers | `X-Frame-Options: DENY`, `nosniff`, a strict referrer policy, and a permissions policy that allows the microphone only for self |
+
+## 8. 3D performance budget (Stage 2+)
+
+The development machine has an **Intel UHD (CometLake-U) integrated GPU, 4 cores and
+7.5 GB RAM**. The office must run smoothly there.
+
+- **Target:** 60 fps at 1080p on an integrated GPU while idle; never below 30 fps while
+  navigating.
+- **Geometry and textures:**
+  - fewer than about 250 draw calls, achieved with instancing (desks, chairs, monitors,
+    plants) and merged static geometry
+  - texture atlases and compressed textures where needed
+- **Lighting:**
+  - one shadow-casting directional light at most
+  - baked or ambient-occlusion-style shading in materials
+  - environment lighting for reflections on glass
+- **Rendering cost:**
+  - `frameloop="demand"` when the scene is idle
+  - adaptive DPR and level of detail for distant floors
+- **Fallback:** when WebGL2 is unavailable (detected by `lib/webgl.ts`), users get a 2D
+  office plan.
+- Frame time and draw calls are measured and reported at each 3D stage.
+
+## 9. Runtime and persistence
+
+- **Database:** SQLite in WAL mode with foreign keys on, stored at
+  `backend/var/nexus.db`. Switching to PostgreSQL means changing `NEXUS_DATABASE_URL`;
+  migrations are dialect-portable.
+- **Migrations:** Alembic. They are explicit (`make migrate`), and readiness reports
+  `migrations_pending` rather than auto-migrating.
+- **Process model:** a single uvicorn process. Background task workers will run
+  in-process (asyncio) against the DB-backed queue. This can be split into a separate
+  worker process later without changing the queue.
+- **Logs:** structured output to stdout (console in development, JSON with
+  `NEXUS_LOG_FORMAT=json`). Every request carries an `X-Request-ID`.
+
+## 10. Free-tier, hardware and capability realities
+
+- **NVIDIA:** build.nvidia.com API access is intended for development and prototyping.
+  Rate limits and credits depend on the account and are **not** unlimited production
+  hosting. Stage 5 will verify the actual model catalog and limits for the owner's key
+  and surface them in the usage dashboard.
+- **Local LLMs:** not practical on this hardware (no discrete GPU, 7.5 GB RAM). The
+  architecture still supports a local OpenAI-compatible endpoint for stronger machines.
+- **Speech:**
+  - whisper.cpp (tiny/base models) and Piper TTS can run on this CPU, with modest latency.
+  - Browser speech APIs vary by browser, and some send audio to the vendor's servers.
+    Stage 7 will detect this and disclose it in the UI.
+- **Email:** Gmail and Microsoft 365 OAuth require the owner to register an OAuth
+  client with each provider. SMTP/IMAP works with app passwords where the provider
+  allows them.

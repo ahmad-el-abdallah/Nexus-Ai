@@ -1,0 +1,39 @@
+# Secrets & local env — only *.example templates are committed
+.env
+.env.*
+!.env.example
+!**/.env.example
+
+# Local runtime data (SQLite DB, logs, uploads)
+var/
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+
+# Python
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Node / Next.js
+node_modules/
+.next/
+out/
+*.tsbuildinfo
+next-env.d.ts
+coverage/
+
+# Editors / OS
+.idea/
+.vscode/*
+!.vscode/extensions.json
+.DS_Store
+*.swp
+
+# Test artifacts
+/.artifacts/
