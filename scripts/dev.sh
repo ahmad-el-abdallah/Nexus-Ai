@@ -22,7 +22,8 @@ done
 
 LAN_IPS=""
 if [[ "$LAN" == 1 ]]; then
-  LAN_IPS="$(hostname -I 2>/dev/null | tr ' ' '\n' | grep -E '^[0-9]+(\.[0-9]+){3}$' | tr '\n' ' ' || true)"
+  # Under WSL2 the network sees the Windows host, so start.bat passes its addresses.
+  LAN_IPS="${NEXUS_LAN_HOSTS:-$(hostname -I 2>/dev/null | tr ' ' '\n' | grep -E '^[0-9]+(\.[0-9]+){3}$' | tr '\n' ' ' || true)}"
   export NEXUS_WEB_HOST=0.0.0.0 NEXUS_DEV_ORIGINS="$LAN_IPS"
 fi
 
