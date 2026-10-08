@@ -7,10 +7,11 @@ interactive 3D headquarters. Every department, employee, desk and meeting room m
 real system functionality: real tasks, real model calls, real approvals. Nothing on
 screen is simulated.
 
-> **Status: Stage 3 of 16 — AI employee characters.** 19 AI employees, stored in the
-> database, sit at their desks in the 3D headquarters with generated appearances,
-> animations driven by their real status, name tags and an owner-controlled
-> suspend/activate. Departments are configured in Stage 4. See [`docs/STAGES.md`](docs/STAGES.md).
+> **Status: Stage 4 of 16 — Departments & organisation.** All 20 departments exist with
+> directors, roles, reporting lines, offices and configuration. You can hire, edit, move,
+> re-seat and remove AI employees from the department pages, the org chart or the 3D
+> office; every change is validated and saved. AI models connect in Stage 5. See
+> [`docs/STAGES.md`](docs/STAGES.md).
 
 ## Quick start
 
@@ -23,7 +24,8 @@ make dev     # backend on :8000 + frontend on :3000
 ```
 
 Open **http://localhost:3000** for the headquarters and **http://localhost:3000/system**
-for live system status, **http://localhost:3000/characters** for the character studio
+for live system status, **/departments** and **/org** for the organisation,
+**http://localhost:3000/characters** for the character studio
 (animation preview). API docs: **http://localhost:3000/api/docs**.
 
 **Navigating the office:** drag to pan · right-drag to rotate · scroll to zoom · click a

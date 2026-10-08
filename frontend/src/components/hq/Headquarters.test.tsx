@@ -21,6 +21,7 @@ const person = (over: Partial<Employee> = {}): Employee => ({
   department: "sales",
   seniority: "mid",
   desk_id: "sales-desk-2",
+  supervisor_id: null,
   avatar_seed: 202,
   status: "idle",
   status_detail: null,

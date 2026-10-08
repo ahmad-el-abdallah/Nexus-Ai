@@ -1,22 +1,26 @@
 "use client";
 
+import type { Department } from "@/lib/departments";
 import type { Employee } from "@/lib/employees";
 import { initials } from "@/world/characters/appearance";
 import { STATUS_META } from "@/world/characters/status";
+import { useDepartment } from "@/world/state/departmentStore";
 
-export const DEPARTMENT_META: Record<string, { name: string; color: string }> = {
-  executive: { name: "Executive", color: "#a78bfa" },
-  sales: { name: "Sales", color: "#fbbf24" },
-  marketing: { name: "Marketing", color: "#f472b6" },
-  engineering: { name: "Engineering", color: "#22d3ee" },
-};
+const FALLBACK_COLOR = "#94a3b8";
 
-export function departmentMeta(key: string) {
-  return DEPARTMENT_META[key] ?? { name: key, color: "#94a3b8" };
+/** Display name and colour of a department (from the backend once loaded). */
+export function departmentMeta(key: string, departments: Department[]): { name: string; color: string } {
+  const d = departments.find((x) => x.key === key);
+  return { name: d?.name ?? key, color: d?.color ?? FALLBACK_COLOR };
+}
+
+export function useDepartmentMeta(key: string) {
+  const d = useDepartment(key);
+  return { name: d?.name ?? key, color: d?.color ?? FALLBACK_COLOR };
 }
 
 export function Initials({ employee, size = "size-9" }: { employee: Employee; size?: string }) {
-  const color = departmentMeta(employee.department).color;
+  const { color } = useDepartmentMeta(employee.department);
   return (
     <span
       aria-hidden

@@ -287,6 +287,41 @@ cosmetic and is visibly distinct from work state.
 - **Character studio** (`/characters`) previews every pose on generated sample people
   and is labelled as not live data.
 
+### Organisation (Stage 4)
+
+- **`departments` table** (migration `0003`). All 20 departments from the brief, each
+  with:
+  - position, name, description, responsibilities
+  - role titles (the first is the director role)
+  - colour
+  - office room
+  - director
+  - resource limits (max concurrent tasks, daily request budget), stored now and
+    enforced once agents run
+- **Employees** gain `supervisor_id`. The migration adds a director for each of the 16
+  new departments (35 employees in total) and wires reporting lines: the CEO at the
+  top, directors under the CEO, staff under their director.
+- **Rules live in `app/services/org.py`** and are enforced on every API call:
+  - roles must belong to the department
+  - desks must exist in `shared/office-desks.json` and be free
+  - no reporting cycles; the CEO reports to no one and can't leave or be removed
+  - directors must be members of their department
+  - moving or removing a director re-parents their reports
+- **`shared/office-desks.json`** lists the building's rooms and desks for the backend.
+  A frontend test keeps it identical to the 3D layout.
+- **Offices.** The building has offices for 4 departments. Staff of the other 16 are
+  *remote* (not drawn in 3D) until they're given a free desk or the building expands
+  (Stage 14).
+- **Endpoints:** `GET/PATCH /api/departments[/{key}]` and
+  `POST/PATCH/DELETE /api/employees[/{id}]`.
+- **UI:** `/departments` (directory), `/departments/{key}` (team, roles,
+  responsibilities, empty task board, configuration), `/org` (collapsible reporting
+  tree), and the employee editor (hire / edit / move / re-seat / remove), also
+  reachable from the 3D employee panel. Re-seating makes the person walk to the new
+  desk; giving a remote employee a desk brings them in by elevator.
+- **No model sessions exist.** Agents are configurations until Stage 5. Nothing runs
+  in the background per agent.
+
 ### Performance budget and measurements
 
 

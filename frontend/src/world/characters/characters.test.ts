@@ -203,6 +203,7 @@ describe("office world", () => {
     department: "sales",
     seniority: "mid",
     desk_id: desk,
+    supervisor_id: null,
     avatar_seed: 5,
     status,
     status_detail: null,

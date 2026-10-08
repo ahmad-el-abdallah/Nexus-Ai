@@ -2,19 +2,21 @@ import { expect, test } from "@playwright/test";
 
 import { collectErrors, officeEmployees, type OfficeHook, settle, waitForEmployees, waitForOffice } from "./helpers";
 
-const STAFF = 19;
+const STAFF = 35;
+const ON_SITE = 19;
 
 test.describe("AI employees", () => {
-  test("every employee from the roster appears seated at their desk, idle", async ({ page }) => {
+  test("every employee with a desk appears seated at it, idle", async ({ page }) => {
     const errors = collectErrors(page);
     await page.goto("/");
     await waitForOffice(page);
     await waitForEmployees(page, STAFF);
     const people = await officeEmployees(page);
     expect(new Set(people.map((p) => p.id)).size).toBe(STAFF);
+    // Everyone with a desk is seated; the rest work remotely and aren't drawn.
+    expect(people.filter((p) => p.visible)).toHaveLength(ON_SITE);
     for (const p of people) {
-      expect(p.visible, p.name).toBe(true);
-      expect(p.mode, p.name).toBe("seated");
+      expect(p.mode, p.name).toBe(p.visible ? "seated" : "away");
       expect(p.status, p.name).toBe("idle");
     }
     await expect(page.getByTestId("staff-chip")).toContainText(`${STAFF} AI employees`);

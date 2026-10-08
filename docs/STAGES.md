@@ -7,8 +7,8 @@ reported, and the next stage starts only after the owner's explicit approval.
 | --- | --- | --- |
 | 1 | Repository, architecture & environment | ✅ Approved |
 | 2 | High-quality 3D office world | ✅ Approved |
-| 3 | AI employee characters | ✅ Complete, awaiting approval for Stage 4 |
-| 4 | Departments & organisational structure | ⏳ Not started |
+| 3 | AI employee characters | ✅ Approved |
+| 4 | Departments & organisational structure | ✅ Complete, awaiting approval for Stage 5 |
 | 5 | NVIDIA AI connection | ⏳ Not started |
 | 6 | Text communication | ⏳ Not started |
 | 7 | Voice communication | ⏳ Not started |
@@ -94,3 +94,20 @@ reported, and the next stage starts only after the owner's explicit approval.
   the other poses are wired and previewed in the character studio.
 - Ambient breaks and idle motion are decorative, labelled, optional, and never change
   any status.
+
+---
+
+## Stage 4 — Departments & organisational structure
+
+**Completed:** 2026-10-08 · **Commit:** "Stage 4: departments and organisational structure"
+
+### Acceptance criteria
+
+| Criterion | Result | Evidence |
+| --- | --- | --- |
+| Departments exist | PASS | All 20 seeded in order with roles, responsibilities, directors (backend test, e2e directory) |
+| Every agent has a valid role | PASS | Backend test over the whole roster; create/edit reject roles outside the department (422) |
+| Agents can be assigned to departments | PASS | Backend + e2e: move Noah Fischer to Research with a valid role |
+| Organisation hierarchy works | PASS | Single tree under the CEO after hire / move / remove / new director / new CEO (backend tests); org chart e2e |
+| Changes persist | PASS | Department configuration survives reload (e2e); all edits verified via fresh API reads (backend tests) |
+| No 20 simultaneous model sessions | PASS (by design) | No agent runtime exists yet; agents are database records only |

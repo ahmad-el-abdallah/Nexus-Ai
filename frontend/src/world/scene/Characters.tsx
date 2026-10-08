@@ -30,6 +30,7 @@ import { blendPose, createJointMatrices, jointMatrices, type JointMatrices, type
 import { STATUS_META } from "../characters/status";
 import { officeWorld, type Resident } from "../characters/world";
 import { isFloorVisible } from "../layout/queries";
+import { useDepartmentStore } from "../state/departmentStore";
 import { useEmployeeStore } from "../state/employeeStore";
 import { useOfficeStore } from "../state/officeStore";
 import { fontFamily } from "../textures";
@@ -44,12 +45,7 @@ function orbColor(hex: string): Color {
   return c;
 }
 const BIG_SPHERE = new Sphere(new Vector3(0, 0, 0), 60);
-const DEPARTMENT_COLORS: Record<string, string> = {
-  executive: "#a78bfa",
-  sales: "#fbbf24",
-  marketing: "#f472b6",
-  engineering: "#22d3ee",
-};
+
 /** Frame rate for gentle idle motion when nothing else is moving. */
 const AMBIENT_FPS = 15;
 
@@ -73,7 +69,7 @@ function drawNameAtlas(residents: Resident[]) {
   residents.forEach((r, i) => {
     const x = (i % COLS) * CELL_W;
     const y = Math.floor(i / COLS) * CELL_H;
-    const accent = DEPARTMENT_COLORS[r.employee.department] ?? "#94a3b8";
+    const accent = r.accent ?? "#94a3b8";
     ctx.save();
     ctx.translate(x, y);
     ctx.fillStyle = "rgba(9, 13, 32, 0.88)";
@@ -159,6 +155,8 @@ const _v = new Vector3();
 /** Every AI employee in the office, driven by the real roster and statuses. */
 export function Characters() {
   const employees = useEmployeeStore((s) => s.employees);
+  const departments = useDepartmentStore((s) => s.departments);
+  const accents = useMemo(() => Object.fromEntries(departments.map((d) => [d.key, d.color])), [departments]);
   const invalidate = useThree((s) => s.invalidate);
   const camera = useThree((s) => s.camera);
   const selectEmployee = useOfficeStore((s) => s.selectEmployee);
@@ -167,9 +165,11 @@ export function Characters() {
   // Status updates flow into the existing controllers; the instancing layout
   // only changes when people or appearances change.
   const signature = useMemo(() => {
-    officeWorld.sync(employees);
-    return [...officeWorld.residents.values()].map((r) => `${r.employee.id}:${r.employee.avatar_seed}:${r.employee.department}`).join("|");
-  }, [employees]);
+    officeWorld.sync(employees, accents);
+    return [...officeWorld.residents.values()]
+      .map((r) => `${r.employee.id}:${r.employee.avatar_seed}:${r.employee.department}:${r.accent ?? ""}:${r.employee.name}:${r.employee.role}`)
+      .join("|");
+  }, [employees, accents]);
   const residents = useMemo(
     () => (signature ? signature.split("|").map((key) => officeWorld.residents.get(key.split(":")[0])!) : []),
     [signature],

@@ -1,0 +1,187 @@
+{
+  "_comment": "Desks and rooms in the headquarters layout. Kept in sync with frontend/src/world/layout/building.ts by frontend/src/world/layout/layout.test.ts; the backend validates desk and office assignments against this file.",
+  "rooms": [
+    {
+      "id": "reception",
+      "name": "Reception",
+      "floor": "L1"
+    },
+    {
+      "id": "sales",
+      "name": "Sales",
+      "floor": "L1"
+    },
+    {
+      "id": "marketing",
+      "name": "Marketing",
+      "floor": "L1"
+    },
+    {
+      "id": "lounge",
+      "name": "Employee Lounge",
+      "floor": "L1"
+    },
+    {
+      "id": "cafe",
+      "name": "Cafeteria",
+      "floor": "L1"
+    },
+    {
+      "id": "executive",
+      "name": "Executive Office",
+      "floor": "L2"
+    },
+    {
+      "id": "meeting",
+      "name": "Meeting Room",
+      "floor": "L2"
+    },
+    {
+      "id": "engineering",
+      "name": "Engineering",
+      "floor": "L2"
+    }
+  ],
+  "desks": [
+    {
+      "id": "sales-desk-1",
+      "room": "sales",
+      "floor": "L1"
+    },
+    {
+      "id": "sales-desk-2",
+      "room": "sales",
+      "floor": "L1"
+    },
+    {
+      "id": "sales-desk-3",
+      "room": "sales",
+      "floor": "L1"
+    },
+    {
+      "id": "sales-desk-4",
+      "room": "sales",
+      "floor": "L1"
+    },
+    {
+      "id": "sales-desk-5",
+      "room": "sales",
+      "floor": "L1"
+    },
+    {
+      "id": "sales-desk-6",
+      "room": "sales",
+      "floor": "L1"
+    },
+    {
+      "id": "sales-desk-7",
+      "room": "sales",
+      "floor": "L1"
+    },
+    {
+      "id": "sales-desk-8",
+      "room": "sales",
+      "floor": "L1"
+    },
+    {
+      "id": "reception-desk-1",
+      "room": "reception",
+      "floor": "L1"
+    },
+    {
+      "id": "marketing-desk-1",
+      "room": "marketing",
+      "floor": "L1"
+    },
+    {
+      "id": "marketing-desk-2",
+      "room": "marketing",
+      "floor": "L1"
+    },
+    {
+      "id": "marketing-desk-3",
+      "room": "marketing",
+      "floor": "L1"
+    },
+    {
+      "id": "marketing-desk-4",
+      "room": "marketing",
+      "floor": "L1"
+    },
+    {
+      "id": "marketing-desk-5",
+      "room": "marketing",
+      "floor": "L1"
+    },
+    {
+      "id": "marketing-desk-6",
+      "room": "marketing",
+      "floor": "L1"
+    },
+    {
+      "id": "executive-desk-1",
+      "room": "executive",
+      "floor": "L2"
+    },
+    {
+      "id": "engineering-desk-1",
+      "room": "engineering",
+      "floor": "L2"
+    },
+    {
+      "id": "engineering-desk-2",
+      "room": "engineering",
+      "floor": "L2"
+    },
+    {
+      "id": "engineering-desk-3",
+      "room": "engineering",
+      "floor": "L2"
+    },
+    {
+      "id": "engineering-desk-4",
+      "room": "engineering",
+      "floor": "L2"
+    },
+    {
+      "id": "engineering-desk-5",
+      "room": "engineering",
+      "floor": "L2"
+    },
+    {
+      "id": "engineering-desk-6",
+      "room": "engineering",
+      "floor": "L2"
+    },
+    {
+      "id": "engineering-desk-7",
+      "room": "engineering",
+      "floor": "L2"
+    },
+    {
+      "id": "engineering-desk-8",
+      "room": "engineering",
+      "floor": "L2"
+    },
+    {
+      "id": "engineering-desk-9",
+      "room": "engineering",
+      "floor": "L2"
+    },
+    {
+      "id": "engineering-desk-10",
+      "room": "engineering",
+      "floor": "L2"
+    },
+    {
+      "id": "engineering-desk-11",
+      "room": "engineering",
+      "floor": "L2"
+    },
+    {
+      "id": "engineering-desk-12",
+      "room": "engineering",
+      "floor": "L2"
+    }
+  ]
+}

@@ -6,13 +6,20 @@ from datetime import UTC, datetime
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.logging import get_logger
 from app.db.session import get_session
 from app.models import Employee, EmployeeStatus
+from app.services.org import (
+    EmployeeChanges,
+    OrgError,
+    create_employee,
+    delete_employee,
+    update_employee,
+)
 
 router = APIRouter(prefix="/api/employees", tags=["employees"])
 log = get_logger("nexus.employees")
@@ -29,10 +36,37 @@ class EmployeeOut(BaseModel):
     department: str
     seniority: str
     desk_id: str | None
+    supervisor_id: str | None
     avatar_seed: int
     status: EmployeeStatus
     status_detail: str | None
     status_changed_at: datetime
+
+
+class EmployeeCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    name: str = Field(min_length=2, max_length=80)
+    department: str
+    role: str
+    seniority: str = "mid"
+    desk_id: str | None = None
+    supervisor_id: str | None = None
+
+
+class EmployeePatch(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    name: str | None = Field(default=None, min_length=2, max_length=80)
+    department: str | None = None
+    role: str | None = None
+    seniority: str | None = None
+    desk_id: str | None = None
+    supervisor_id: str | None = None
+
+
+def _org_error(error: OrgError) -> HTTPException:
+    return HTTPException(error.status, str(error))
 
 
 async def _get(session: AsyncSession, employee_id: str) -> Employee:
@@ -61,6 +95,57 @@ async def _set_status(
 async def list_employees(session: Session) -> list[Employee]:
     result = await session.scalars(select(Employee).order_by(Employee.department, Employee.name))
     return list(result)
+
+
+@router.post("", response_model=EmployeeOut, status_code=status.HTTP_201_CREATED)
+async def hire_employee(body: EmployeeCreate, session: Session) -> Employee:
+    """Owner action: add a new AI employee (a configuration — no model runs yet)."""
+    try:
+        return await create_employee(
+            session,
+            name=body.name,
+            department_key=body.department,
+            role=body.role,
+            seniority=body.seniority,
+            desk_id=body.desk_id,
+            supervisor_id=body.supervisor_id,
+        )
+    except OrgError as error:
+        await session.rollback()
+        raise _org_error(error) from error
+
+
+@router.patch("/{employee_id}", response_model=EmployeeOut)
+async def edit_employee(employee_id: str, body: EmployeePatch, session: Session) -> Employee:
+    """Owner action: rename, change role, move department, re-seat or re-report."""
+    employee = await _get(session, employee_id)
+    fields = body.model_fields_set
+    changes = EmployeeChanges(
+        name=body.name,
+        role=body.role,
+        department=body.department,
+        seniority=body.seniority,
+        desk_id=body.desk_id,
+        supervisor_id=body.supervisor_id,
+        desk_set="desk_id" in fields,
+        supervisor_set="supervisor_id" in fields,
+    )
+    try:
+        return await update_employee(session, employee, changes)
+    except OrgError as error:
+        await session.rollback()
+        raise _org_error(error) from error
+
+
+@router.delete("/{employee_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def remove_employee(employee_id: str, session: Session) -> None:
+    """Owner action: remove an employee. Their reports move up to their manager."""
+    employee = await _get(session, employee_id)
+    try:
+        await delete_employee(session, employee)
+    except OrgError as error:
+        await session.rollback()
+        raise _org_error(error) from error
 
 
 @router.get("/{employee_id}", response_model=EmployeeOut)

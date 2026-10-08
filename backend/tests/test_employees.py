@@ -4,20 +4,23 @@ import re
 
 import httpx
 
-EXPECTED_DEPARTMENTS = {"executive", "sales", "marketing", "engineering"}
+SEATED_DEPARTMENTS = {"executive", "sales", "marketing", "engineering"}
 
 
 async def test_lists_the_seeded_staff(client: httpx.AsyncClient) -> None:
     response = await client.get("/api/employees")
     assert response.status_code == 200
     staff = response.json()
-    assert len(staff) == 19
-    assert {e["department"] for e in staff} == EXPECTED_DEPARTMENTS
+    assert len(staff) == 35
+    assert len({e["department"] for e in staff}) == 20
+    seated = [e for e in staff if e["desk_id"]]
+    assert len(seated) == 19
+    assert {e["department"] for e in seated} == SEATED_DEPARTMENTS
     ids = [e["id"] for e in staff]
     assert len(set(ids)) == len(ids)
     assert all(re.fullmatch(r"emp_[0-9a-f]{12}", i) for i in ids)
-    desks = [e["desk_id"] for e in staff]
-    assert len(set(desks)) == len(desks), "every employee has their own desk"
+    desks = [e["desk_id"] for e in seated]
+    assert len(set(desks)) == len(desks), "no two employees share a desk"
     # Nobody is doing work: there is no task system yet.
     assert {e["status"] for e in staff} == {"idle"}
 

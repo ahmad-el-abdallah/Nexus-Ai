@@ -13,6 +13,8 @@ import { FloorPlan2D } from "@/world/plan2d/FloorPlan2D";
 import { startEmployeePolling, useEmployeeStore } from "@/world/state/employeeStore";
 import { type Quality, useOfficeStore } from "@/world/state/officeStore";
 
+import { NavLinks } from "@/components/org/AppShell";
+
 import { CameraButtons, FloorStack, PerfOverlay, QualitySelect, ViewToggle } from "./Controls";
 import { EmployeePanel } from "./EmployeePanel";
 import { RoomFinder } from "./RoomFinder";
@@ -58,6 +60,7 @@ function StaffChip() {
     );
   }
   if (employees.length === 0) return null;
+  const remote = employees.filter((e) => !e.desk_id).length;
   const counts = new Map<string, number>();
   for (const e of employees) counts.set(e.status, (counts.get(e.status) ?? 0) + 1);
   const summary = [...counts.entries()]
@@ -72,6 +75,7 @@ function StaffChip() {
     >
       <span className="font-semibold text-nx-text">{employees.length} AI employees</span>
       {summary}
+      {remote > 0 && <span className="text-nx-faint">· {remote} remote</span>}
     </span>
   );
 }
@@ -103,6 +107,8 @@ export function Headquarters() {
     if (quality === "high" || quality === "balanced" || quality === "low") store.setQuality(quality as Quality);
     if (params.has("perf") && !store.showPerf) store.togglePerf();
     if (window.matchMedia?.("(prefers-reduced-motion: reduce)").matches || params.get("ambient") === "off") store.setAmbient(false);
+    const room = params.get("room");
+    if (room) store.selectRoom(room);
     const supported = detectWebGL().webgl2 && !params.has("nowebgl");
     if (!supported) store.setWebGL("unsupported");
     else if (params.get("view") === "2d") store.setView("2d");
@@ -127,6 +133,9 @@ export function Headquarters() {
           </Link>
           <div className="order-last w-full md:order-none md:ml-6 md:w-auto">
             <RoomFinder />
+          </div>
+          <div className="hidden rounded-xl bg-nx-bg/70 p-1 ring-1 ring-nx-line-strong backdrop-blur-md lg:block">
+            <NavLinks compact />
           </div>
           <div className="ml-auto flex items-center gap-2">
             <StaffChip />

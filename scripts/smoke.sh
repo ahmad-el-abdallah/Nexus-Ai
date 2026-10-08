@@ -80,10 +80,13 @@ echo "Frontend:"
 check "GET /healthz"          200 "$WEB/healthz"          '"status":"ok"'
 check "GET / (headquarters)" 200 "$WEB/"                 'NEXUS AI'
 check "GET /system"           200 "$WEB/system"           'System status'
+check "GET /departments"      200 "$WEB/departments"      'Departments'
+check "GET /org"              200 "$WEB/org"              'Org chart'
 
 echo "Frontend → backend proxy:"
 check "GET /api/health/ready" 200 "$WEB/api/health/ready" 'x-request-id'
 check "GET /api/system/info"  200 "$WEB/api/system/info"  '"name":"NEXUS AI"'
+check "GET /api/departments"  200 "$WEB/api/departments"  '"key":"knowledge"'
 
 echo "Backend stopped (proxy must not pretend it is healthy):"
 kill_tree "$API_PID"; wait "$API_PID" 2>/dev/null || true; API_PID=

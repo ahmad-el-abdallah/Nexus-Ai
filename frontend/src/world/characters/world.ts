@@ -11,6 +11,8 @@ import { CharacterController, type Seat } from "./controller";
 
 export interface Resident {
   employee: Employee;
+  /** Department accent the appearance was generated with. */
+  accent?: string;
   appearance: Appearance;
   controller: CharacterController;
 }
@@ -37,20 +39,29 @@ export class OfficeWorld {
   readonly residents = new Map<string, Resident>();
   private meetingAssignments = new Map<string, Seat>();
 
-  /** Adds, updates and removes residents to match the roster. */
-  sync(employees: Employee[]): void {
+  /**
+   * Adds, updates and removes residents to match the roster. A new desk is
+   * a new home: the person walks there (or arrives / leaves by elevator).
+   */
+  sync(employees: Employee[], accents: Record<string, string> = {}): void {
     const seen = new Set<string>();
     for (const employee of employees) {
       seen.add(employee.id);
+      const home = employee.desk_id ? (DESK_SEATS.get(employee.desk_id) ?? null) : null;
       const existing = this.residents.get(employee.id);
-      if (existing && existing.employee.desk_id === employee.desk_id && existing.employee.avatar_seed === employee.avatar_seed) {
+      if (existing && existing.employee.avatar_seed === employee.avatar_seed) {
+        if (existing.employee.department !== employee.department || existing.accent !== accents[employee.department]) {
+          existing.appearance = generateAppearance(employee.avatar_seed, employee.department, accents[employee.department]);
+          existing.accent = accents[employee.department];
+        }
+        if (existing.employee.desk_id !== employee.desk_id) existing.controller.home = home;
         existing.employee = employee;
         continue;
       }
-      const home = employee.desk_id ? (DESK_SEATS.get(employee.desk_id) ?? null) : null;
       this.residents.set(employee.id, {
         employee,
-        appearance: generateAppearance(employee.avatar_seed, employee.department),
+        accent: accents[employee.department],
+        appearance: generateAppearance(employee.avatar_seed, employee.department, accents[employee.department]),
         controller: new CharacterController(employee.id, employee.avatar_seed, home, employee.status),
       });
     }

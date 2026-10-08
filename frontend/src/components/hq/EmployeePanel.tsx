@@ -9,7 +9,8 @@ import { ROOM_BY_ID } from "@/world/layout/queries";
 import { useEmployeeStore } from "@/world/state/employeeStore";
 import { useOfficeStore } from "@/world/state/officeStore";
 
-import { departmentMeta, Initials, relativeTime } from "./people";
+import { EmployeeEditor } from "./EmployeeEditor";
+import { Initials, relativeTime, useDepartmentMeta } from "./people";
 
 function deskLabel(deskId: string | null): string {
   if (!deskId) return "No desk";
@@ -30,6 +31,8 @@ export function EmployeePanel() {
   const setAvailability = useEmployeeStore((s) => s.setAvailability);
   // Read the clock only on the client, after mount (the page is prerendered).
   const [now, setNow] = useState<number | null>(null);
+  const [editing, setEditing] = useState(false);
+  const dept = useDepartmentMeta(employee?.department ?? "");
 
   // "Doing" comes from the live 3D controller; refresh it twice a second.
   useEffect(() => {
@@ -45,12 +48,12 @@ export function EmployeePanel() {
 
   if (!id || !employee) return null;
   const meta = STATUS_META[employee.status];
-  const dept = departmentMeta(employee.department);
   const doing = officeWorld.residents.get(employee.id)?.controller.doing ?? "—";
   const suspended = employee.status === "suspended";
 
   const facts: Array<[string, string]> = [
     ["Department", dept.name],
+    ["Office", employee.desk_id ? "On site" : "Remote — no desk"],
     ["Seniority", employee.seniority[0].toUpperCase() + employee.seniority.slice(1)],
     ["Desk", deskLabel(employee.desk_id)],
     ["AI model", "Not connected (Stage 5)"],
@@ -120,6 +123,13 @@ export function EmployeePanel() {
         </button>
         <button
           type="button"
+          onClick={() => setEditing(true)}
+          className="rounded-lg px-3 py-2 text-xs font-medium text-nx-text ring-1 ring-nx-line-strong transition hover:bg-white/5"
+        >
+          Edit employee
+        </button>
+        <button
+          type="button"
           disabled={pending}
           onClick={() => void setAvailability(employee.id, suspended ? "activate" : "suspend")}
           className={`rounded-lg px-3 py-2 text-xs font-semibold ring-1 transition disabled:opacity-50 ${
@@ -137,6 +147,7 @@ export function EmployeePanel() {
         </p>
       )}
       <p className="mt-4 font-mono text-[11px] text-nx-faint">{employee.id}</p>
+      {editing && <EmployeeEditor employee={employee} onClose={() => setEditing(false)} onDeleted={() => selectEmployee(null)} />}
     </aside>
   );
 }

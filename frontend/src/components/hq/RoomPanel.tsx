@@ -1,7 +1,10 @@
 "use client";
 
+import Link from "next/link";
+
 import { WORKSTATIONS } from "@/world/layout/building";
 import { FLOOR_BY_ID, ROOM_BY_ID, roomStats } from "@/world/layout/queries";
+import { useDepartmentStore } from "@/world/state/departmentStore";
 import { useEmployeeStore } from "@/world/state/employeeStore";
 import { useOfficeStore } from "@/world/state/officeStore";
 
@@ -21,6 +24,7 @@ export function RoomPanel() {
   const selectEmployee = useOfficeStore((s) => s.selectEmployee);
   const employees = useEmployeeStore((s) => s.employees);
   const rosterLoad = useEmployeeStore((s) => s.load);
+  const departments = useDepartmentStore((s) => s.departments);
   const room = roomId ? ROOM_BY_ID.get(roomId) : undefined;
   if (!room) return null;
   const stats = roomStats(room.id);
@@ -58,6 +62,22 @@ export function RoomPanel() {
         </button>
       </header>
       <p className="mt-3 text-sm leading-6 text-nx-muted">{room.description}</p>
+      {departments.some((d) => d.room_id === room.id) && (
+        <p className="mt-3 flex flex-wrap gap-2 text-xs">
+          {departments
+            .filter((d) => d.room_id === room.id)
+            .map((d) => (
+              <Link
+                key={d.key}
+                href={`/departments/${d.key}`}
+                className="rounded-full px-2.5 py-1 font-medium ring-1 hover:bg-white/5"
+                style={{ color: d.color, borderColor: d.color }}
+              >
+                {d.name} department →
+              </Link>
+            ))}
+        </p>
+      )}
 
       <dl className="mt-5 grid grid-cols-2 gap-px overflow-hidden rounded-xl bg-nx-line">
         {facts.map(([label, value]) => (

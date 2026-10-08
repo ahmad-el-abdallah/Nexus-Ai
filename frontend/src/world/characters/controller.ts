@@ -90,7 +90,7 @@ export class CharacterController {
   constructor(
     readonly id: string,
     readonly seed: number,
-    readonly home: Seat | null,
+    public home: Seat | null,
     status: EmployeeStatus,
   ) {
     this.rand = mulberry32(seed);

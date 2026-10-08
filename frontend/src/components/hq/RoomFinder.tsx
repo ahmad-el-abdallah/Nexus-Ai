@@ -7,6 +7,8 @@ import { searchRooms } from "@/world/layout/queries";
 import { useEmployeeStore } from "@/world/state/employeeStore";
 import { useOfficeStore } from "@/world/state/officeStore";
 
+import { useDepartmentStore } from "@/world/state/departmentStore";
+
 import { departmentMeta, Initials } from "./people";
 
 /** Search box doubling as the building directory (rooms and people). */
@@ -17,14 +19,15 @@ export function RoomFinder() {
   const selectRoom = useOfficeStore((s) => s.selectRoom);
   const selectEmployee = useOfficeStore((s) => s.selectEmployee);
   const employees = useEmployeeStore((s) => s.employees);
+  const departments = useDepartmentStore((s) => s.departments);
   const rooms = useMemo(() => searchRooms(query), [query]);
   const people = useMemo(() => {
     const q = query.trim().toLowerCase();
     if (!q) return [];
     return employees.filter((e) =>
-      [e.name, e.role, departmentMeta(e.department).name].some((f) => f.toLowerCase().includes(q)),
+      [e.name, e.role, departmentMeta(e.department, departments).name].some((f) => f.toLowerCase().includes(q)),
     );
-  }, [employees, query]);
+  }, [employees, departments, query]);
   type Result = { kind: "room"; id: string } | { kind: "person"; id: string };
   const results: Result[] = [...people.map((p) => ({ kind: "person" as const, id: p.id })), ...rooms.map((r) => ({ kind: "room" as const, id: r.id }))];
   const listId = useId();

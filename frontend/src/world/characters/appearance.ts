@@ -42,6 +42,17 @@ const DEPARTMENT_TONES: Record<string, string[]> = {
   engineering: ["#0e7490", "#0891b2", "#155e75", "#1d4ed8"],
 };
 
+/** Four outfit tones derived from a department's accent colour (darker, richer shades). */
+export function tonesFromAccent(hex: string): string[] {
+  const n = parseInt(hex.replace("#", ""), 16);
+  const r = (n >> 16) & 255;
+  const g = (n >> 8) & 255;
+  const b = n & 255;
+  const shade = (k: number) =>
+    "#" + [r, g, b].map((c) => Math.round(c * k).toString(16).padStart(2, "0")).join("");
+  return [shade(0.55), shade(0.7), shade(0.42), shade(0.82)];
+}
+
 function mulberry32(seed: number) {
   let a = seed >>> 0;
   return () => {
@@ -55,10 +66,10 @@ function mulberry32(seed: number) {
 
 const pick = <T,>(r: () => number, list: readonly T[]): T => list[Math.floor(r() * list.length)];
 
-export function generateAppearance(seed: number, department = ""): Appearance {
+export function generateAppearance(seed: number, department = "", accent?: string): Appearance {
   const r = mulberry32(seed * 2654435761);
   const hairStyle = pick(r, HAIR_STYLES);
-  const tones = DEPARTMENT_TONES[department] ?? NEUTRALS;
+  const tones = DEPARTMENT_TONES[department] ?? (accent ? tonesFromAccent(accent) : NEUTRALS);
   const top = pick(r, TOPS);
   const coloured = r() < 0.65;
   return {

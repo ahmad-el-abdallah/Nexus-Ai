@@ -1,6 +1,13 @@
 import { CURRENT_STAGE, STAGES } from "@/lib/stages";
 
 const NEXT_STAGE_SCOPE: Record<number, string[]> = {
+  5: [
+    "Secure NVIDIA API key handling (server-side only)",
+    "Model discovery from the real catalogue",
+    "Connection test, streaming, retries and timeouts",
+    "Per-department / per-employee model routing",
+    "Usage tracking, quotas and concurrency limits",
+  ],
   4: [
     "All 20 departments with directors and rosters",
     "Organisational hierarchy and reporting lines",
