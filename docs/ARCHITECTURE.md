@@ -451,6 +451,19 @@ cosmetic and is visibly distinct from work state.
   externally with `noopener noreferrer`, and remote images are shown as links, never
   loaded.
 
+### Tasks the owner gives are done (`app/services/task_runner.py`)
+
+Creating a task (from a chat message or the task board) starts it at once unless the
+owner only records it: the assignee — or the department director when nobody is
+chosen — writes the deliverable with their model (thinking on, up to 3,000 tokens),
+streamed onto their desk monitor while their status shows "working". The prompt has
+the task, its details and the last six messages of the conversation it came from (as
+context). The result is stored on the task (Show result on the task board) and posted
+by the employee in that conversation ("✅ Task done: …"). Failures are stored with
+the reason and a "Run again" button; a running task can be cancelled; a restart marks
+interrupted tasks failed. Recorded-only tasks can still be handed to the CEO as a
+workflow. Agents produce text only, so running a task needs no approval.
+
 ### Company knowledge for every employee
 
 Every AI call made for an employee (chat, voice, workflows, email drafts) carries a live

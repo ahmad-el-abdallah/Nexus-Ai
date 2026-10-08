@@ -5,7 +5,8 @@ import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 
 import { relativeTime } from "@/components/hq/people";
-import { fetchTasks, type Task, updateTask } from "@/lib/chat";
+import { Markdown } from "@/components/chat/Markdown";
+import { fetchTasks, runTask, type Task, updateTask } from "@/lib/chat";
 import { liveEvents } from "@/lib/events";
 import { createWorkflow } from "@/lib/workflows";
 
@@ -13,8 +14,9 @@ import { TaskStatusChip } from "../workflows/ui";
 import { useEmployeeStore } from "@/world/state/employeeStore";
 
 /**
- * A department's tasks: those from workflows (live status) and those the owner
- * recorded from chat ("open" until cancelled or handed to the CEO as a workflow).
+ * A department's tasks: those from workflows (live status) and those the owner gave
+ * the department (done by the assignee or the director right away, or kept open to
+ * hand to the CEO as a workflow).
  */
 export function TaskBoard({ department }: { department: string }) {
   const employees = useEmployeeStore((s) => s.employees);
@@ -22,6 +24,8 @@ export function TaskBoard({ department }: { department: string }) {
   const [error, setError] = useState<string | null>(null);
   const [showCancelled, setShowCancelled] = useState(false);
   const [showAll, setShowAll] = useState(false);
+  const [openResult, setOpenResult] = useState<string | null>(null);
+  const [now] = useState(() => Date.now());
   const router = useRouter();
 
   const load = useCallback(async () => {
@@ -59,9 +63,20 @@ export function TaskBoard({ department }: { department: string }) {
     }
   };
 
+  const start = async (task: Task) => {
+    try {
+      const updated = await runTask(task.id);
+      setTasks((list) => list?.map((t) => (t.id === updated.id ? updated : t)) ?? null);
+    } catch (err) {
+      setError((err as Error).message);
+    }
+  };
+
   const recorded = tasks?.filter((t) => t.kind === "manual") ?? [];
-  const open = recorded.filter((t) => t.status === "open");
-  const closed = recorded.filter((t) => t.status !== "open");
+  // Active: being worked on, waiting, failed, or done in the last day; the rest is history.
+  const recent = (t: Task) => t.finished_at && now - new Date(t.finished_at).getTime() < 86_400_000;
+  const open = recorded.filter((t) => ["open", "running", "failed"].includes(t.status) || (t.status === "done" && recent(t)));
+  const closed = recorded.filter((t) => !open.includes(t));
   const flow = (tasks ?? []).filter((t) => t.kind !== "manual");
   const handToCeo = async (task: Task) => {
     try {
@@ -103,9 +118,31 @@ export function TaskBoard({ department }: { department: string }) {
                 </Link>
               )}
             </>
+          ) : t.status === "running" ? (
+            <>
+              <TaskStatusChip status="running" />
+              <button type="button" onClick={() => void setStatus(t, "cancelled")} className="rounded-lg px-2 py-0.5 text-[11px] text-nx-muted ring-1 ring-nx-line-strong hover:text-nx-error">
+                Cancel
+              </button>
+            </>
+          ) : t.status === "failed" ? (
+            <>
+              <TaskStatusChip status="failed" />
+              <button type="button" onClick={() => void start(t)} className="rounded-lg bg-nx-violet/20 px-2 py-0.5 text-[11px] text-nx-text ring-1 ring-nx-violet/50 hover:bg-nx-violet/30">
+                Run again
+              </button>
+            </>
           ) : t.status === "open" ? (
             <>
               <span className="rounded-full bg-white/5 px-2 py-0.5 text-[11px] text-nx-muted ring-1 ring-nx-line-strong">Open · not started</span>
+              <button
+                type="button"
+                onClick={() => void start(t)}
+                title="The assignee — or the department director — does it now"
+                className="rounded-lg bg-nx-cyan/15 px-2 py-0.5 text-[11px] text-nx-text ring-1 ring-nx-cyan/50 hover:bg-nx-cyan/25"
+              >
+                Start now
+              </button>
               <button
                 type="button"
                 onClick={() => void handToCeo(t)}
@@ -121,13 +158,27 @@ export function TaskBoard({ department }: { department: string }) {
           ) : t.status === "done" ? (
             <TaskStatusChip status="done" />
           ) : (
-            <button type="button" onClick={() => void setStatus(t, "open")} className="rounded-lg px-2 py-0.5 text-[11px] text-nx-muted ring-1 ring-nx-line-strong hover:text-nx-text">
-              Reopen
+            <button type="button" onClick={() => void start(t)} className="rounded-lg px-2 py-0.5 text-[11px] text-nx-muted ring-1 ring-nx-line-strong hover:text-nx-text">
+              Run again
             </button>
           )}
         </div>
       </div>
       {t.description && t.description !== t.title && <p className="mt-2 line-clamp-2 text-xs text-nx-muted">{t.description}</p>}
+      {t.kind === "manual" && t.status === "running" && <p className="mt-2 text-xs text-nx-cyan">{nameOf(t.assignee_id)} is working on it — watch their desk monitor in the office.</p>}
+      {t.kind === "manual" && t.error && t.status !== "running" && <p className="mt-2 text-xs text-nx-error">{t.error}</p>}
+      {t.kind === "manual" && t.result && (
+        <div className="mt-2">
+          <button type="button" onClick={() => setOpenResult(openResult === t.id ? null : t.id)} className="text-xs text-nx-indigo hover:text-nx-cyan" aria-expanded={openResult === t.id}>
+            {openResult === t.id ? "Hide result" : "Show result"}
+          </button>
+          {openResult === t.id && (
+            <div className="mt-2 rounded-lg bg-nx-bg/60 p-3 text-sm ring-1 ring-nx-line" data-testid="task-result">
+              <Markdown text={t.result} />
+            </div>
+          )}
+        </div>
+      )}
     </li>
   );
 
@@ -153,14 +204,14 @@ export function TaskBoard({ department }: { department: string }) {
       )}
       {open.length > 0 && (
         <>
-          <h3 className="mt-4 text-[11px] font-medium tracking-wider text-nx-faint uppercase">Recorded tasks</h3>
+          <h3 className="mt-4 text-[11px] font-medium tracking-wider text-nx-faint uppercase">Tasks you gave</h3>
           <ul className="mt-2 space-y-2">{open.map(row)}</ul>
         </>
       )}
       {closed.length > 0 && (
         <div className="mt-3">
           <button type="button" onClick={() => setShowCancelled(!showCancelled)} className="text-xs text-nx-faint hover:text-nx-muted" aria-expanded={showCancelled}>
-            {showCancelled ? "Hide" : "Show"} {closed.length} closed recorded task{closed.length === 1 ? "" : "s"}
+            {showCancelled ? "Hide" : "Show"} {closed.length} earlier task{closed.length === 1 ? "" : "s"}
           </button>
           {showCancelled && <ul className="mt-2 space-y-2">{closed.map(row)}</ul>}
         </div>

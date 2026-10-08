@@ -463,6 +463,7 @@ async def test_rename_and_delete_conversation(chat_client: httpx.AsyncClient) ->
             "department": "marketing",
             "source_conversation_id": cid,
             "source_message_id": message_id,
+            "run": False,
         },
     )
     assert task.status_code == 201
@@ -488,7 +489,12 @@ async def test_tasks_from_chat_are_validated_and_listed(chat_client: httpx.Async
     cmo = await employee_by_name(chat_client, "Elena Rossi")
     cto = await employee_by_name(chat_client, "Iris Wong")
 
-    base = {"title": "Launch campaign", "department": "marketing", "source_conversation_id": cid}
+    base = {
+        "title": "Launch campaign",
+        "department": "marketing",
+        "source_conversation_id": cid,
+        "run": False,  # only recorded here; running is tested in test_task_runner.py
+    }
     wrong_dept = await chat_client.post("/api/tasks", json={**base, "assignee_id": cto["id"]})
     assert wrong_dept.status_code == 422
     other = await open_chat(chat_client, department="engineering")

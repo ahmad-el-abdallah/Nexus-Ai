@@ -165,8 +165,12 @@ export interface TaskDraft {
   assignee_id: string | null;
   source_conversation_id?: string | null;
   source_message_id?: number | null;
+  /** Start working on it at once (default). False: only record it, e.g. for the CEO. */
+  run?: boolean;
 }
 
+/** The assignee (or the department director) does the task now. */
+export const runTask = (id: string) => request<Task>(`/api/tasks/${id}/run`, { method: "POST" });
 export const createTask = (draft: TaskDraft) => request<Task>("/api/tasks", { method: "POST", body: JSON.stringify(draft) });
 export const updateTask = (id: string, changes: Partial<Pick<Task, "title" | "description" | "assignee_id" | "status">>) =>
   request<Task>(`/api/tasks/${id}`, { method: "PATCH", body: JSON.stringify(changes) });

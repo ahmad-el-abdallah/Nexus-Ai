@@ -17,7 +17,7 @@ from app.orchestration import plans
 from tests.fake_agents import canned_reply
 from tests.test_ai import FAKE_KEY, MASTER, _no_sleep, ready_catalog
 
-FORMATS = ("PLAN", "BREAKDOWN", "WORK", "REVIEW", "SUMMARY", "REPORT", "EMAIL")
+FORMATS = ("PLAN", "BREAKDOWN", "WORK", "REVIEW", "SUMMARY", "REPORT", "EMAIL", "TASK")
 OBJECTIVE = "Research a new software business opportunity and create an implementation plan."
 
 
@@ -524,6 +524,7 @@ async def test_recorded_task_can_be_handed_to_the_ceo(wf_client: httpx.AsyncClie
                 "title": "Plan a launch",
                 "description": "Plan the product launch for next month.",
                 "department": "marketing",
+                "run": False,
             },
         )
     ).json()

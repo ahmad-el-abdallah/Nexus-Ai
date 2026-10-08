@@ -84,12 +84,20 @@ test.describe("Text communication", () => {
     await owner.getByRole("button", { name: "Create task" }).click();
     const dialog = page.getByRole("dialog");
     await expect(dialog.getByRole("textbox", { name: "Title" })).toHaveValue("Review the attached brief");
-    await dialog.getByRole("button", { name: "Create task" }).click();
-    await expect(dialog).toContainText("open — not started");
-    await dialog.getByRole("link", { name: "Open task board" }).click();
-    await expect(page).toHaveURL(/\/departments\/marketing/);
-    await expect(page.getByTestId("task").first()).toContainText("Review the attached brief");
-    await expect(page.getByTestId("task").first()).toContainText("Open · not started");
+    await dialog.getByRole("button", { name: "Create and start" }).click();
+    await expect(dialog).toContainText("Task started");
+    await expect(dialog).toContainText("is working on “Review the attached brief” now");
+    await dialog.getByRole("button", { name: "Done" }).click();
+    // The employee does it and reports the result in this chat.
+    const report = page.locator('[data-testid="message"][data-role="agent"]').last();
+    await expect(report).toContainText("Task done: Review the attached brief", { timeout: 15_000 });
+    await expect(report).toContainText("three concrete steps");
+
+    await page.goto("/departments/marketing");
+    const task = page.getByTestId("task").filter({ hasText: "Review the attached brief" }).first();
+    await expect(task).toContainText("Done");
+    await task.getByRole("button", { name: "Show result" }).click();
+    await expect(task.getByTestId("task-result")).toContainText("three concrete steps");
   });
 
   test("status changes arrive live, without waiting for a poll", async ({ page, request }) => {

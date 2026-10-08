@@ -1,5 +1,6 @@
-"""Department task records. Stage 6 records tasks (e.g. from chat); nothing
-executes them until the orchestration engine arrives in Stage 8."""
+"""Department tasks. A task the owner records (from chat or the task board) is done
+by its assignee — or the department director — right away (`TaskRunner`); it can
+also be handed to the CEO as a workflow instead."""
 
 from __future__ import annotations
 
@@ -15,6 +16,7 @@ from app.db.session import get_session
 from app.models import Conversation, Department, Employee, Message, Task, TaskStatus
 from app.schemas import TaskOut, dump
 from app.services.chat import new_id
+from app.services.task_runner import TaskRunError, TaskRunner
 
 router = APIRouter(prefix="/api/tasks", tags=["tasks"])
 log = get_logger("nexus.tasks")
@@ -30,6 +32,8 @@ class TaskCreate(BaseModel):
     assignee_id: str | None = None
     source_conversation_id: str | None = None
     source_message_id: int | None = None
+    # Start working on it at once (False: only record it, e.g. to hand it to the CEO).
+    run: bool = True
 
 
 class TaskPatch(BaseModel):
@@ -111,7 +115,32 @@ async def create_task(body: TaskCreate, session: Session, request: Request) -> T
     await session.commit()
     await session.refresh(task)
     log.info("task.created", task_id=task.id, department=task.department)
+    if body.run:
+        try:
+            await runner(request).start(task.id)
+        except TaskRunError as error:
+            # Recorded, but nobody can do it right now: it stays open and says why.
+            task.error = str(error)
+            await session.commit()
+        await session.refresh(task)
     return _publish(request, "task.updated", task)
+
+
+def runner(request: Request) -> TaskRunner:
+    return request.app.state.tasks
+
+
+@router.post("/{task_id}/run", response_model=TaskOut)
+async def run_task(task_id: str, session: Session, request: Request) -> TaskOut:
+    """The assignee (or the department director) does the task now."""
+    try:
+        await runner(request).start(task_id)
+    except TaskRunError as error:
+        raise HTTPException(error.status, str(error)) from error
+    task = await session.get(Task, task_id)
+    assert task is not None
+    await session.refresh(task)
+    return TaskOut.model_validate(task)
 
 
 @router.patch("/{task_id}", response_model=TaskOut)
@@ -123,6 +152,11 @@ async def update_task(task_id: str, body: TaskPatch, session: Session, request: 
         raise HTTPException(409, "Workflow tasks are managed by their workflow; cancel them there.")
     if body.status is not None and body.status not in (TaskStatus.OPEN, TaskStatus.CANCELLED):
         raise HTTPException(422, "A recorded task can only be open or cancelled.")
+    if body.status == TaskStatus.CANCELLED and task.status == TaskStatus.RUNNING:
+        await runner(request).cancel(task.id)  # stops the employee working on it
+        await session.refresh(task)
+    elif task.status == TaskStatus.RUNNING and body.model_fields_set - {"status"}:
+        raise HTTPException(409, "Cancel the task before changing it while it is being worked on.")
     fields = body.model_fields_set
     if "assignee_id" in fields:
         await _check_assignee(session, task.department, body.assignee_id)

@@ -16,7 +16,7 @@ export interface TaskSource {
   messageId: number;
 }
 
-/** Records a task from a chat message. Nothing executes it before Stage 8 — the dialog says so. */
+/** Creates a task from a chat message; the assignee (or the director) starts on it at once. */
 export function TaskDialog({ source, onClose }: { source: TaskSource; onClose: () => void }) {
   const departments = useDepartmentStore((s) => s.departments);
   const employees = useEmployeeStore((s) => s.employees);
@@ -24,6 +24,7 @@ export function TaskDialog({ source, onClose }: { source: TaskSource; onClose: (
   const [description, setDescription] = useState(source.text);
   const [department, setDepartment] = useState(source.department);
   const [assignee, setAssignee] = useState(source.assigneeId ?? "");
+  const [run, setRun] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [created, setCreated] = useState<Task | null>(null);
@@ -52,6 +53,7 @@ export function TaskDialog({ source, onClose }: { source: TaskSource; onClose: (
           assignee_id: assignee || null,
           source_conversation_id: source.conversationId,
           source_message_id: source.messageId,
+          run,
         }),
       );
     } catch (err) {
@@ -72,10 +74,20 @@ export function TaskDialog({ source, onClose }: { source: TaskSource; onClose: (
       {created ? (
         <div className="p-6">
           <h2 id="task-dialog-title" className="text-base font-semibold">
-            Task recorded
+            {created.status === "running" ? "Task started" : "Task recorded"}
           </h2>
           <p className="mt-2 text-sm text-nx-muted" role="status">
-            “{created.title}” is on {departmentName}&apos;s task board as <strong className="text-nx-text">open — not started</strong>. Nothing executes tasks yet; the orchestration engine arrives in Stage 8.
+            {created.status === "running" ? (
+              <>
+                <strong className="text-nx-text">{employees.find((e) => e.id === created.assignee_id)?.name ?? "The assignee"}</strong> is working on “{created.title}” now. The
+                result will appear in this chat and on {departmentName}&apos;s task board.
+              </>
+            ) : (
+              <>
+                “{created.title}” is on {departmentName}&apos;s task board as <strong className="text-nx-text">open — not started</strong>
+                {created.error ? ` (${created.error})` : ""}. Start it or hand it to the CEO from there.
+              </>
+            )}
           </p>
           <div className="mt-5 flex justify-end gap-2">
             <Link href={`/departments/${created.department}#tasks-title`} className={ghostBtn}>
@@ -92,7 +104,7 @@ export function TaskDialog({ source, onClose }: { source: TaskSource; onClose: (
             <h2 id="task-dialog-title" className="text-base font-semibold">
               Create a task from this message
             </h2>
-            <p className="mt-1 text-xs text-nx-faint">It will be recorded as open. Tasks are executed by the orchestration engine in Stage 8.</p>
+            <p className="mt-1 text-xs text-nx-faint">The assignee — or the department director if nobody is chosen — does it right away (one AI request).</p>
           </div>
           <label className={labelCls}>
             Title
@@ -123,7 +135,7 @@ export function TaskDialog({ source, onClose }: { source: TaskSource; onClose: (
             <label className={labelCls}>
               Assignee
               <select value={assignee} onChange={(e) => setAssignee(e.target.value)} className={input}>
-                <option value="">Unassigned</option>
+                <option value="">The director decides (does it)</option>
                 {members.map((m) => (
                   <option key={m.id} value={m.id}>
                     {m.name} — {m.role}
@@ -132,6 +144,11 @@ export function TaskDialog({ source, onClose }: { source: TaskSource; onClose: (
               </select>
             </label>
           </div>
+          <label className="flex items-center gap-2 text-sm text-nx-text">
+            <input type="checkbox" checked={run} onChange={(e) => setRun(e.target.checked)} />
+            Start working on it now
+            <span className="text-xs text-nx-faint">(untick to only record it, e.g. to hand it to the CEO as a workflow)</span>
+          </label>
           {error && (
             <p role="alert" className="text-sm text-nx-error">
               {error}
@@ -142,7 +159,7 @@ export function TaskDialog({ source, onClose }: { source: TaskSource; onClose: (
               Cancel
             </button>
             <button type="submit" disabled={busy || title.trim().length < 3} className={primaryBtn}>
-              {busy ? "Saving…" : "Create task"}
+              {busy ? "Saving…" : run ? "Create and start" : "Create task"}
             </button>
           </div>
         </form>

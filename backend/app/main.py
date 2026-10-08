@@ -36,6 +36,7 @@ from app.email.service import EmailService
 from app.orchestration.engine import Orchestrator
 from app.services.activity import ActivityTracker
 from app.services.chat import ChatService
+from app.services.task_runner import TaskRunner
 from app.voice.service import VoiceService
 
 log = get_logger("nexus.app")
@@ -73,6 +74,9 @@ def create_app(
         app.state.chat = ChatService(
             app.state.db, app.state.ai, app.state.events, app.state.activity
         )
+        app.state.tasks = TaskRunner(
+            app.state.db, app.state.ai, app.state.events, app.state.activity, app.state.chat
+        )
         app.state.voice = VoiceService(settings, app.state.events, transport=voice_transport)
         app.state.workflows = Orchestrator(
             app.state.db, app.state.ai, app.state.events, app.state.activity, app.state.chat
@@ -100,6 +104,7 @@ def create_app(
             log.warning("app.secret_key_missing", hint="Run `make setup` to generate backend/.env")
         if await _schema_ready(app.state.db):
             await app.state.chat.recover()
+            await app.state.tasks.recover()
             await app.state.workflows.recover()
             await app.state.activity.recover()
             await app.state.email.recover()
@@ -109,6 +114,7 @@ def create_app(
             app.state.events.close()
             await app.state.workflows.shutdown()
             await app.state.email.shutdown()
+            await app.state.tasks.shutdown()
             await app.state.chat.shutdown()
             await app.state.activity.shutdown()
             await app.state.voice.shutdown()

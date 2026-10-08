@@ -267,19 +267,32 @@ describe("ConversationView", () => {
 });
 
 describe("TaskDialog", () => {
-  it("records a task and says it won't run before Stage 8", async () => {
+  it("creates a task that the assignee starts at once", async () => {
     const fetchMock = vi.fn(async (_url: string, init: RequestInit) => {
       const body = JSON.parse(init.body as string);
-      return json({ id: "tsk_1", status: "open", created_at: "", updated_at: "", source_message_id: 2, ...body }, 201);
+      return json({ id: "tsk_1", status: body.run ? "running" : "open", created_at: "", updated_at: "", source_message_id: 2, error: null, ...body }, 201);
     });
     vi.stubGlobal("fetch", fetchMock);
     render(<TaskDialog source={{ text: "## Launch the campaign\nDetails here", department: "marketing", assigneeId: "emp_cmo", conversationId: "cnv_1", messageId: 2 }} onClose={() => {}} />);
     expect(screen.getByRole("textbox", { name: "Title" })).toHaveValue("Launch the campaign");
     expect(screen.getByRole("combobox", { name: "Assignee" })).toHaveValue("emp_cmo");
+    fireEvent.click(screen.getByRole("button", { name: "Create and start" }));
+    expect(await screen.findByText("Task started")).toBeInTheDocument();
+    expect(screen.getByRole("status")).toHaveTextContent("is working on “Launch the campaign” now");
+    const sent = JSON.parse(fetchMock.mock.calls[0][1].body as string);
+    expect(sent).toMatchObject({ title: "Launch the campaign", department: "marketing", assignee_id: "emp_cmo", source_conversation_id: "cnv_1", source_message_id: 2, run: true });
+  });
+
+  it("can only record a task, to hand it to the CEO later", async () => {
+    const fetchMock = vi.fn(async (_url: string, init: RequestInit) => {
+      const body = JSON.parse(init.body as string);
+      return json({ id: "tsk_2", status: "open", created_at: "", updated_at: "", error: null, ...body }, 201);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    render(<TaskDialog source={{ text: "Plan Q4", department: "marketing", assigneeId: null, conversationId: "cnv_1", messageId: 2 }} onClose={() => {}} />);
+    fireEvent.click(screen.getByRole("checkbox", { name: /Start working on it now/ }));
     fireEvent.click(screen.getByRole("button", { name: "Create task" }));
     expect(await screen.findByText(/open — not started/)).toBeInTheDocument();
-    expect(screen.getByText(/orchestration engine arrives in Stage 8/)).toBeInTheDocument();
-    const sent = JSON.parse(fetchMock.mock.calls[0][1].body as string);
-    expect(sent).toMatchObject({ title: "Launch the campaign", department: "marketing", assignee_id: "emp_cmo", source_conversation_id: "cnv_1", source_message_id: 2 });
+    expect(JSON.parse(fetchMock.mock.calls[0][1].body as string).run).toBe(false);
   });
 });

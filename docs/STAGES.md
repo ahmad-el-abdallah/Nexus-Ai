@@ -307,3 +307,11 @@ voice now ask the model to answer directly: first words in ~1 s (was ~8 s for th
 question), 0 reasoning tokens. A setting turns thinking back on; workflows and email
 drafts keep it.
 
+### Follow-up (owner request): tasks are actually done
+
+Creating a task used to only record it. Now the assignee (or the director) starts at
+once, works on it visibly in the office, and posts the result in the chat it came from;
+the task board shows running / done (with the result) / failed (Run again) and can
+cancel. Real run: Sameer Abuhummus delivered a full design for an API error-rate
+monitoring tool in 18 s.
+
