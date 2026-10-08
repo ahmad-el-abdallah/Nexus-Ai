@@ -28,6 +28,12 @@ export const LIVE_EVENTS = [
   "workflow.updated",
   "workflow.event",
   "employee.screen",
+  "email.account",
+  "email.message",
+  "email.log",
+  "email.inbox",
+  "email.deleted",
+  "email.removed",
 ] as const;
 export type LiveEventType = (typeof LIVE_EVENTS)[number];
 

@@ -15,12 +15,24 @@ from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import text
 
 from app.ai.gateway import AIGateway
-from app.api import ai, chat, departments, employees, events, health, tasks, voice, workflows
-from app.core.config import APP_VERSION, Settings, get_settings
+from app.api import (
+    ai,
+    chat,
+    departments,
+    email,
+    employees,
+    events,
+    health,
+    tasks,
+    voice,
+    workflows,
+)
+from app.core.config import APP_VERSION, Environment, Settings, get_settings
 from app.core.events import EventBus, install_shutdown_hook
 from app.core.logging import configure_logging, get_logger
 from app.core.middleware import RequestContextMiddleware
 from app.db.session import Database
+from app.email.service import EmailService
 from app.orchestration.engine import Orchestrator
 from app.services.activity import ActivityTracker
 from app.services.chat import ChatService
@@ -34,7 +46,7 @@ async def _schema_ready(database: Database) -> bool:
     """Startup housekeeping only runs on a migrated database (readiness reports the rest)."""
     try:
         async with database.engine.connect() as connection:
-            await connection.execute(text("SELECT 1 FROM workflows LIMIT 1"))
+            await connection.execute(text("SELECT 1 FROM email_events LIMIT 1"))  # newest table
         return True
     except Exception:  # missing tables or an unreachable database
         return False
@@ -44,8 +56,10 @@ def create_app(
     settings: Settings | None = None,
     ai_transport: httpx.AsyncBaseTransport | None = None,
     voice_transport: httpx.AsyncBaseTransport | None = None,
+    email_transport: httpx.AsyncBaseTransport | None = None,
 ) -> FastAPI:
-    """The transports let tests replace the network (AI provider, model downloads)."""
+    """The transports let tests replace the network (AI provider, model downloads,
+    OAuth token endpoints and the Brevo API)."""
     settings = settings or get_settings()
     configure_logging(settings.log_level, settings.log_format)
 
@@ -63,6 +77,16 @@ def create_app(
         app.state.workflows = Orchestrator(
             app.state.db, app.state.ai, app.state.events, app.state.activity, app.state.chat
         )
+        app.state.email = EmailService(
+            app.state.db,
+            settings,
+            app.state.events,
+            app.state.activity,
+            app.state.ai,
+            http_transport=email_transport,
+        )
+        if settings.env == Environment.TEST:
+            app.state.email.poll_seconds = None  # tests sync the inbox explicitly
         app.state.started_at = datetime.now(UTC)
         log.info(
             "app.startup",
@@ -78,11 +102,13 @@ def create_app(
             await app.state.chat.recover()
             await app.state.workflows.recover()
             await app.state.activity.recover()
+            await app.state.email.recover()
         try:
             yield
         finally:
             app.state.events.close()
             await app.state.workflows.shutdown()
+            await app.state.email.shutdown()
             await app.state.chat.shutdown()
             await app.state.activity.shutdown()
             await app.state.voice.shutdown()
@@ -114,4 +140,5 @@ def create_app(
     app.include_router(events.router)
     app.include_router(voice.router)
     app.include_router(workflows.router)
+    app.include_router(email.router)
     return app

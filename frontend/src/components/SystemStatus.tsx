@@ -111,9 +111,23 @@ export function buildRows(state: SystemStatusState): Row[] {
     },
     {
       label: "Company email",
-      value: plannedValue(email),
-      detail: "No account connected",
-      tone: componentTone(email),
+      value:
+        email?.status === "ok"
+          ? `${String(email.data.connected)} account(s) connected`
+          : email?.status === "not_configured"
+            ? "No account connected"
+            : email?.status === "configured"
+              ? "Saved · not connected"
+              : email?.status === "error"
+                ? "Connection problem"
+                : plannedValue(email),
+      detail:
+        email?.status === "ok"
+          ? Number(email.data.awaiting_approval)
+            ? `${String(email.data.awaiting_approval)} email(s) waiting for your approval`
+            : undefined
+          : (email?.detail ?? undefined),
+      tone: email?.status === "configured" || email?.status === "not_configured" ? "neutral" : componentTone(email),
     },
   ];
 }

@@ -42,6 +42,7 @@ ignore = ["S101", "E501"]
 
 [dependency-groups]
 dev = [
+    "aiosmtpd>=1.4.6",
     "httpx>=0.28",
     "pytest>=9.1",
     "pytest-asyncio>=1.4",

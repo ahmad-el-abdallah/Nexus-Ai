@@ -97,13 +97,27 @@ async def ready(request: Request, response: Response) -> Readiness:
     components["voice"] = Component(
         status=voice_status, critical=False, detail=voice_detail, data=voice_data
     )
-    # Integrations that do not exist yet are reported honestly, never as "ok".
-    components["email"] = Component(
-        status="planned",
-        critical=False,
-        detail="Company email accounts are connected in Stage 9",
-        data={"stage": 9},
-    )
+    # Email: from the saved accounts and their last connection test (no network call).
+    if components["migrations"].status == "ok":
+        async with database.sessionmaker() as session:
+            mail = await request.app.state.email.health(session)
+        email_status: ComponentStatus = {
+            "not_configured": "not_configured",
+            "not_connected": "configured",
+            "ok": "ok",
+        }.get(mail["status"], "error")  # type: ignore[assignment]
+        email_detail = {
+            "not_configured": "No email account connected yet (Settings → Email)",
+            "configured": "Account saved but not connected; run the connection test",
+            "ok": f"{mail['connected']} account(s) connected",
+        }.get(email_status, mail.get("problem"))
+        components["email"] = Component(
+            status=email_status, critical=False, detail=email_detail, data=mail
+        )
+    else:
+        components["email"] = Component(
+            status="error", critical=False, detail="Skipped: database not ready"
+        )
 
     healthy = all(c.status == "ok" for c in components.values() if c.critical)
     if not healthy:

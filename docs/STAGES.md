@@ -12,8 +12,8 @@ reported, and the next stage starts only after the owner's explicit approval.
 | 5 | NVIDIA AI connection | ✅ Approved |
 | 6 | Text communication | ✅ Approved |
 | 7 | Voice communication | ✅ Approved |
-| 8 | Multi-agent task orchestration | ✅ Complete, awaiting approval for Stage 9 |
-| 9 | Email integration | ⏳ Not started |
+| 8 | Multi-agent task orchestration | ✅ Approved |
+| 9 | Email integration | ✅ Complete, awaiting approval for Stage 10 |
 | 10 | Employee profiles & ratings | ⏳ Not started |
 | 11 | Executive dashboard & project management | ⏳ Not started |
 | 12 | Meetings & interdepartment collaboration | ⏳ Not started |
@@ -251,3 +251,26 @@ Monitors in the 3D office now show each employee's actual current work in a role
 app (code editor for engineers, documents for marketing, CRM for sales, spreadsheet for
 finance, …): the task or message they handle and the text they produce, streamed live.
 "View screen" looks over their shoulder. Nothing is invented — idle desks say so.
+
+## Stage 9 — Email integration
+
+**Completed:** 2026-10-08 · **Commit:** "Stage 9: email integration"
+
+Settings → Email accounts connects how the company sends: **Brevo** (the owner's choice,
+recommended: API key + a sender verified in Brevo) or a mailbox directly (Gmail,
+Microsoft 365, Yahoo, iCloud, Zoho, custom SMTP/IMAP; app password or OAuth with the
+owner's own app registration). The **Email** page has the approval queue, inbox, outbox,
+sent, rejected and the email log. Design: [`adr/0002-email-sending.md`](adr/0002-email-sending.md).
+
+### Acceptance criteria
+
+| Criterion | Result | Evidence |
+| --- | --- | --- |
+| Configured account connects | PASS (local fake servers) · NOT TESTED with a real provider | Connection tests pass against the fake SMTP/IMAP server and fake Brevo API (backend + e2e). A real Brevo/Gmail account needs the owner's credentials |
+| Drafts can be generated | PASS | Owner-written and AI-written drafts; real NVIDIA run (Nemotron 3 Super, 1 request, 6 s) drafted a reply to an email containing a prompt injection and ignored it |
+| Owner approval is required | PASS | Only `pending_approval → approved` queues a send (atomic); edits withdraw approval; tests check nothing is sent before approval and 4 concurrent approvals send once |
+| Approved messages can be sent | PASS | Fake SMTP and fake Brevo receive exactly one message with the fixed Message-ID / idempotencyKey |
+| Provider failures are visible | PASS | Login, unverified sender, rejection, rate limit, temporary failure, dropped connection, IMAP down: shown on the message, the account and in the log |
+| No duplicate emails during retry | PASS | Auto-retry only when the server definitely didn't accept the message (≤ 2); a broken connection mid-send is "uncertain" and never resent without explicit confirmation |
+| No secret leaks | PASS | Passwords, API keys, OAuth tokens and client secrets are encrypted and never returned or logged (tests); client bundle and repo scanned for secret values |
+

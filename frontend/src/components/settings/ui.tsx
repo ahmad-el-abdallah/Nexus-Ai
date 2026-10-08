@@ -48,7 +48,7 @@ export function timeAgo(iso: string | null): string {
 const SETTINGS_SECTIONS: { label: string; href?: string; note?: string }[] = [
   { label: "AI providers", href: "/settings/ai" },
   { label: "Voice", href: "/settings/voice" },
-  { label: "Email accounts", note: "Stage 9" },
+  { label: "Email accounts", href: "/settings/email" },
   { label: "Company", note: "Stage 11" },
 ];
 

@@ -107,7 +107,7 @@ export function ViewToggle() {
           disabled={v === "3d" && noGL}
           title={v === "3d" && noGL ? "3D needs WebGL2, which this browser doesn't provide" : undefined}
           onClick={() => setView(v)}
-          className={`rounded-lg px-3 py-1.5 text-xs font-semibold uppercase transition disabled:opacity-40 ${view === v ? "bg-white/10 text-white" : "text-nx-muted hover:text-nx-text"}`}
+          className={`rounded-lg px-3 py-1.5 text-xs font-semibold whitespace-nowrap uppercase transition disabled:opacity-40 ${view === v ? "bg-white/10 text-white" : "text-nx-muted hover:text-nx-text"}`}
         >
           {v === "3d" ? "3D" : "2D plan"}
         </button>

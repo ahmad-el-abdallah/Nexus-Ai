@@ -19,6 +19,12 @@
 - Reasoning models may echo the format tag or spend all tokens thinking; free-text
   results go through `prompts.clean_text`, empty replies are retried.
 
+- Email: `smtplib.SMTP.data()` does **not** raise on a 4xx/5xx final reply — check the
+  code. Gmail hangs up after a rejected password (no 535), and aiosmtpd's authenticator
+  must return `AuthResult(..., handled=False)` or the client never gets a reply.
+- Email accounts store the preset key (`gmail`) in `provider`; OAuth endpoints are keyed
+  by `preset.oauth` (`google`).
+
 ## Frontend / 3D
 - drei `<Html>` creates a React root per label → "synchronously unmount a root" errors in
   dev Strict Mode. Use `ScreenAnchors` + `ScreenLabel`.
@@ -30,6 +36,8 @@
 - The HQ top bar is tight at 1440 px: keep chips short and `whitespace-nowrap`.
 
 ## Shell
+- Uncommitted work can disappear into a **"Teleport auto-stash"** (`git stash list`) when
+  a session is moved to/from the cloud. Check the stash before recreating lost files.
 - Don't use `pkill -f <pattern>` (it matches your own shell); kill by PID from
   `ss -ltnp`.
 - `sqlite3` CLI isn't installed; copy DBs with Python's `sqlite3` `backup()`.

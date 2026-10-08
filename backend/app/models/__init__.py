@@ -10,6 +10,7 @@ from app.models.chat import (
     MessageStatus,
 )
 from app.models.department import Department
+from app.models.email import EmailAccount, EmailEvent, EmailMessage, EmailStatus
 from app.models.employee import Employee, EmployeeStatus
 from app.models.system import SystemMetadata
 from app.models.task import TERMINAL, Task, TaskStatus
@@ -26,6 +27,10 @@ __all__ = [
     "Conversation",
     "ConversationKind",
     "Department",
+    "EmailAccount",
+    "EmailEvent",
+    "EmailMessage",
+    "EmailStatus",
     "Employee",
     "EmployeeStatus",
     "Message",

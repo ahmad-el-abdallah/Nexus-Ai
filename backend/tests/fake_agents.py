@@ -59,6 +59,14 @@ def canned_reply(prompt: str) -> str | None:
                 ],
             }
         )
+    if "Format: NEXUS-EMAIL/1" in prompt:
+        return json.dumps(
+            {
+                "subject": "Following up on your message",
+                "body": "Hello,\n\nThank you for getting in touch. [Confirm the details "
+                "before sending.]\n\nBest regards,\n[Your name]",
+            }
+        )
     if "Format: NEXUS-REVIEW/1" in prompt:
         return json.dumps({"decision": "approve", "feedback": "Clear and usable."})
     if "Format: NEXUS-WORK/1" in prompt:

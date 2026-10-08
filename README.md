@@ -7,12 +7,15 @@ interactive 3D headquarters. Every department, employee, desk and meeting room m
 real system functionality: real tasks, real model calls, real approvals. Nothing on
 screen is simulated.
 
-> **Status: Stage 8 of 16 — Multi-agent orchestration.** Give the CEO an objective in
-> **Workflows** (or "Delegate to CEO" from chat): the CEO plans which departments do what,
-> you approve the plan, supervisors split the work among their teams, workers deliver,
-> supervisors review, and the CEO consolidates the final report — with dependencies,
-> retries, cancellation and hard limits, live in the 3D office. Chat and voice from
-> Stages 6–7 keep working. See [`docs/STAGES.md`](docs/STAGES.md).
+> **Status: Stage 9 of 16 — Company email.** Connect how your company sends email
+> (Settings → Email accounts): **Brevo** (recommended: API key + a verified sender, free
+> plan 300 emails/day) or a mailbox directly (Gmail, Microsoft 365, Yahoo, iCloud, Zoho or
+> any SMTP/IMAP server; app password or OAuth with your own app registration). Employees
+> draft emails and replies; every email waits in the **approval queue** on the **Email**
+> page and is sent only after you approve it. Inbox reading (untrusted, plain text),
+> connection tests, a full email log, safe retries without duplicates and a disconnect
+> flow. Workflows, chat and voice from Stages 6–8 keep working. See
+> [`docs/STAGES.md`](docs/STAGES.md).
 
 ## Quick start
 
@@ -59,7 +62,7 @@ make help    # every command
 | [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | Target system architecture for all 16 stages, security model, performance budget |
 | [`docs/DEVELOPMENT.md`](docs/DEVELOPMENT.md) | Setup, configuration, scripts, migrations, testing, troubleshooting |
 | [`docs/STAGES.md`](docs/STAGES.md) | Stage plan, acceptance criteria and stage reports |
-| [`docs/adr/`](docs/adr) | Architecture decision records |
+| [`docs/adr/`](docs/adr) | Architecture decision records (stack, email sending) |
 
 ## Principles
 

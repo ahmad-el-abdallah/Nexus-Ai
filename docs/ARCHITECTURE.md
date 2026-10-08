@@ -99,7 +99,7 @@ flowchart LR
 | `app/voice/`, `app/api/voice.py` | 7 | Local speech: model catalogue (pinned + SHA-256), verified installs, faster-whisper transcription, Piper synthesis, speech text preparation |
 | `app/orchestration/` (`engine.py`, `plans.py`, `prompts.py`), `app/api/workflows.py`, `app/services/activity.py`, `app/services/staffing.py` | 8 | Workflow engine: CEO delegation, supervisors, workers, reviews, dependencies, retries, pause/cancel, hard limits; live employee statuses |
 | `app/services/tools/` | 8, 15 | *Planned.* Tool gateway: allowlists, sandboxing, permission checks |
-| `app/services/email/` | 9 | *Planned.* Provider adapters, drafts, approval queue, idempotent sending |
+| `app/email/` (`providers.py`, `transport.py`, `brevo.py`, `mime.py`, `oauth.py`, `service.py`), `app/api/email.py` | 9 | Company email: provider presets, Brevo API sending, SMTP/IMAP (stdlib, in threads), OAuth (PKCE), encrypted credentials, drafts, approval queue, duplicate-safe sending, inbox sync, email log |
 | `app/services/metrics/` | 10 | *Planned.* Evidence-based ratings with configurable weights |
 | `app/services/projects/` | 11 | *Planned.* Projects, milestones, boards, approvals |
 | `app/services/meetings/` | 12 | *Planned.* Turn-based meeting orchestrator with hard turn limits |
@@ -184,10 +184,53 @@ stateDiagram-v2
 
 ### 5.3 Email (Stage 9)
 
-The flow is `Draft → Awaiting Approval → Approved → Sending → Sent | Failed`.
-- Each send carries an **idempotency key**, so a retry can never send a duplicate.
-- A message is marked `Sent` only after the provider accepts it.
-- Inbound email is **untrusted data**. It is never interpreted as owner instructions.
+`drafting → pending_approval → approved → sending → sent | failed | uncertain`
+(also `draft_failed`, `rejected`; received mail is `received`). Decision record:
+[`adr/0002-email-sending.md`](adr/0002-email-sending.md).
+
+- **Brevo (recommended for sending):** the account holds a Brevo API key and a sender
+  address verified in Brevo; mail goes out through `POST /v3/smtp/email` (plain text,
+  `idempotencyKey` = the draft's Message-ID). The connection test calls `/account`
+  (plan and remaining credits, as Brevo reports them) and checks the sender against
+  `/senders` and authenticated domains. Errors: 400/401 → not sent; 429 or a failed
+  connection → not sent, retried; 5xx or a connection lost after the request → uncertain.
+  Brevo has no inbox, so reading mail is optional IMAP on the same account (mailbox
+  password stored encrypted with the API key); NEXUS files a copy of Brevo-sent mail in
+  the mailbox's Sent folder when IMAP is set.
+- **Accounts:** the owner adds Brevo or any mailbox (presets for Gmail, Microsoft 365,
+  Yahoo, iCloud, Zoho, or custom SMTP/IMAP). There is no built-in sender. Sign-in is a
+  password/app password or OAuth 2.0 (authorization code + PKCE) with the owner's own
+  Google/Microsoft app registration; SMTP and IMAP then use XOAUTH2 and tokens are
+  refreshed before they expire. Passwords, tokens and OAuth client secrets are
+  Fernet-encrypted with `NEXUS_SECRET_KEY` and never returned by the API. Unencrypted
+  connections are allowed only to `localhost`.
+- **Connection test:** signs in to SMTP (NOOP) and IMAP (opens INBOX read-only); nothing
+  is sent. Failures are shown per server and recorded in the email log.
+- **Drafts:** written by the owner, or by an AI employee from the owner's instructions
+  (streamed onto their desk monitor). The model writes only the subject and body;
+  recipients are set by the owner or are the sender of the email being answered. Every
+  draft lands in the approval queue.
+- **Approval is enforced in code:** only `pending_approval → approved` (an atomic
+  conditional UPDATE) queues a send; editing a draft returns it to `pending_approval`.
+- **No duplicates:** the Message-ID is fixed when the draft is created; one worker claims a
+  message (`approved → sending`, atomic); automatic retries (at most 2) happen only when
+  the server definitely did not accept the message (failure before or at DATA with a
+  4xx reply). If the connection breaks while the message is transferred, or NEXUS stops
+  mid-send, the message becomes `uncertain`: never resent automatically. The owner can
+  check the Sent folder over IMAP (search by Message-ID) or explicitly confirm a resend.
+- **Inbox:** IMAP read-only (`BODY.PEEK`, nothing marked or deleted); first sync reads the
+  latest 25, then incremental by UID (UIDVALIDITY tracked); polled every 5 minutes for
+  connected accounts, or "Sync inbox". Bodies are kept as plain text (HTML reduced to
+  text, never rendered); attachments are listed by name and never opened or stored.
+- **Untrusted data:** a received email given to a model for a reply is wrapped as
+  quoted `RECEIVED_EMAIL` data with an explicit instruction not to follow anything in it.
+- **Copy in Sent:** providers that don't keep a copy of SMTP mail get one appended over
+  IMAP (Gmail and Microsoft 365 keep their own).
+- **Log and live updates:** every connection, test, sync, draft, approval, send, retry
+  and failure is an `email_events` row (Email → Log); changes stream as `email.*` SSE
+  events. Disconnect deletes credentials (revokes the Google grant where possible),
+  withdraws drafts waiting for approval and keeps history; "Remove with history"
+  deletes the account and its stored mail.
 
 ### 5.4 Office projection (Stages 3, 6, 14)
 
@@ -590,5 +633,7 @@ quality is intended for discrete GPUs.
   - Browser speech APIs are **not** used: Chrome's recognition sends audio to Google.
     Everything runs locally instead.
 - **Email:** Gmail and Microsoft 365 OAuth require the owner to register an OAuth
-  client with each provider. SMTP/IMAP works with app passwords where the provider
-  allows them.
+  client with each provider (free; Google apps in "testing" mode work for the owner's
+  own account). SMTP/IMAP works with app passwords where the provider allows them
+  (Gmail, Yahoo, iCloud, Zoho); Microsoft is phasing out password sign-in, so it needs
+  OAuth and SMTP AUTH enabled for the mailbox. Provider sending limits apply.

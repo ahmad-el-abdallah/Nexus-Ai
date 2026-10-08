@@ -25,3 +25,6 @@
 - Next keeps the previous route mounted (hidden) after navigation — scope selectors to the
   visible page (e.g. `getByRole("region", { name: "Status" })`).
 - Wait on state, not sleeps; run flaky suspects several times in a row before trusting them.
+- Email: `tests/fake_mail.py` (SMTP via aiosmtpd, minimal IMAP, fake Brevo API) with
+  failure modes. Backend tests start it per test; e2e runs it on 18325/18326/18327
+  (control + `/v3` Brevo). Never use a real mailbox or Brevo account in tests.

@@ -30,7 +30,7 @@ async def test_integrations_report_their_real_state_never_ok_by_default(
     assert components["ai_provider"]["status"] == "not_configured"
     assert components["ai_provider"]["critical"] is False
     assert components["ai_provider"]["data"]["key_present"] is False
-    assert components["email"]["status"] == "planned"
+    assert components["email"]["status"] == "not_configured"
 
 
 async def test_readiness_reports_pending_migrations(db_url, make_settings, make_client) -> None:

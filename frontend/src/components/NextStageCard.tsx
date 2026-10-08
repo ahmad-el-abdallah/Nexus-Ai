@@ -1,6 +1,13 @@
 import { CURRENT_STAGE, STAGES } from "@/lib/stages";
 
 const NEXT_STAGE_SCOPE: Record<number, string[]> = {
+  10: [
+    "Employee profiles that open from the 3D characters",
+    "Skills, task history and active assignments from real records",
+    "Performance scores and ratings based on verified work only",
+    "Owner feedback, rating history and role changes",
+    "\u201cNot enough data\u201d wherever there is no evidence yet",
+  ],
   9: [
     "Connect a company email account you choose (OAuth or SMTP/IMAP)",
     "Credentials stored encrypted, never shown again",

@@ -31,7 +31,7 @@ function readiness(overrides: Partial<Readiness["components"]> = {}): Readiness 
       critical: false,
       data: { provider: "nvidia", key_present: false, default_model: null },
     },
-    email: { status: "planned", detail: null, critical: false, data: { stage: 9 } },
+    email: { status: "not_configured", detail: "No email account connected yet (Settings → Email)", critical: false, data: { accounts: 0, connected: 0 } },
     ...overrides,
   };
   const healthy = Object.values(components).every((c) => !c.critical || c.status === "ok");
@@ -74,13 +74,25 @@ describe("SystemStatus", () => {
     expect(fetchMock).toHaveBeenCalledWith("/api/health/ready", expect.anything());
   });
 
-  it("reports the AI provider's real state and unbuilt integrations as planned", async () => {
+  it("reports the AI provider's and email's real state", async () => {
     mockBackend(readiness());
     render(<SystemStatus />);
 
     await screen.findByText("Operational");
     expect(within(row("AI provider · NVIDIA")).getByText("No API key")).toBeInTheDocument();
-    expect(within(row("Company email")).getByText("Planned · Stage 9")).toBeInTheDocument();
+    expect(within(row("Company email")).getByText("No account connected")).toBeInTheDocument();
+  });
+
+  it("shows connected email accounts and connection problems", async () => {
+    mockBackend(readiness({ email: { status: "ok", detail: "1 account(s) connected", critical: false, data: { accounts: 1, connected: 1 } } }));
+    const { unmount } = render(<SystemStatus />);
+    await screen.findByText("Operational");
+    expect(within(row("Company email")).getByText("1 account(s) connected")).toBeInTheDocument();
+    unmount();
+    mockBackend(readiness({ email: { status: "error", detail: "owner@example.com: Login failed", critical: false, data: { accounts: 1, connected: 0 } } }));
+    render(<SystemStatus />);
+    await screen.findByText("Operational");
+    expect(within(row("Company email")).getByText("Connection problem")).toBeInTheDocument();
   });
 
   it("reports whether local voice models are installed", async () => {

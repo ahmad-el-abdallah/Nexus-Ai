@@ -85,11 +85,12 @@ const BRIEF_HEADING: Record<string, string> = {
   chat: "Owner's message",
   review: "Under review",
   summary: "Team results",
+  email: "Owner's instructions",
 };
 
 function liveStatus(screen: Screen): Pick<MonitorView, "status" | "tone"> {
   if (screen.failed) return { status: "✕ Not finished", tone: "failed" };
-  if (screen.done) return { status: screen.kind === "chat" ? "✓ Reply sent" : screen.kind === "review" ? "✓ Review done" : "✓ Delivered", tone: "done" };
+  if (screen.done) return { status: screen.kind === "chat" ? "✓ Reply sent" : screen.kind === "review" ? "✓ Review done" : screen.kind === "email" ? "✓ Draft ready for approval" : "✓ Delivered", tone: "done" };
   if (screen.thinking && !screen.text) return { status: "Thinking… (reasoning isn't shown)", tone: "thinking" };
   if (!screen.text) return { status: "Waiting for the first words…", tone: "thinking" };
   return { status: "● Writing live", tone: "live" };
@@ -116,7 +117,7 @@ export function monitorView(employee: Employee, screen: Screen | null | undefine
       tone: "idle",
     };
   }
-  const file = screen.kind === "chat" ? "reply.md" : `${slug(screen.title)}.md`;
+  const file = screen.kind === "chat" ? "reply.md" : screen.kind === "email" ? "draft.eml" : `${slug(screen.title)}.md`;
   if (monitors === 2 && index === 1) {
     return {
       ...base,

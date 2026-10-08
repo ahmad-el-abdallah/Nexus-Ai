@@ -43,6 +43,11 @@ class Settings(BaseSettings):
         alias="NEXUS_CORS_ORIGINS",
     )
 
+    # Where the owner opens NEXUS in the browser (OAuth sign-ins return here).
+    public_url: str = Field(default="http://localhost:3000", alias="NEXUS_PUBLIC_URL")
+    # Brevo's API (tests point this at a local fake).
+    brevo_api_url: str = Field(default="https://api.brevo.com/v3", alias="NEXUS_BREVO_API_URL")
+
     # --- Persistence ---------------------------------------------------------
     database_url: str = Field(
         default=f"sqlite+aiosqlite:///{BACKEND_DIR / 'var' / 'nexus.db'}",
