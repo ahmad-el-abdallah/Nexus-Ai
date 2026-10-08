@@ -278,6 +278,7 @@ class AIGateway:
         purpose: str,
         max_tokens: int | None = None,
         context: str | None = None,
+        thinking: bool = True,
     ) -> tuple[Completion, Route, CallStats]:
         """One non-streamed call. `context` extends the employee's system prompt."""
         cfg = await self.config(session)
@@ -314,7 +315,11 @@ class AIGateway:
             for attempt in range(MAX_RETRIES + 1):
                 try:
                     completion = await provider.complete(
-                        route.model, messages, max_tokens or cfg.max_output_tokens, cfg.temperature
+                        route.model,
+                        messages,
+                        max_tokens or cfg.max_output_tokens,
+                        cfg.temperature,
+                        thinking,
                     )
                     break
                 except ProviderError as error:
@@ -366,6 +371,7 @@ class AIGateway:
         purpose: str,
         context: str | None = None,
         max_tokens: int | None = None,
+        thinking: bool = True,
     ) -> tuple[Route, AsyncIterator[StreamEvent]]:
         """Validates and routes first (errors raise before streaming starts),
         then returns the route and an iterator of stream events. The first event
@@ -411,7 +417,7 @@ class AIGateway:
                     produced = False
                     try:
                         async for event in provider.stream(
-                            route.model, messages, max_tokens, temperature
+                            route.model, messages, max_tokens, temperature, thinking
                         ):
                             if event.kind != "done":
                                 produced = True

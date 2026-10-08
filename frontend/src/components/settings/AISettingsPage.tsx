@@ -277,6 +277,7 @@ function DefaultsCard({ settings, models, onChange }: { settings: AISettings; mo
         timeout_seconds: Number(form.timeout_seconds),
         concurrency_limit: Number(form.concurrency_limit),
         daily_request_budget: Number(form.daily_request_budget),
+        chat_thinking: form.chat_thinking,
       });
       onChange(updated);
       setState({ busy: false, error: null, message: "Saved." });
@@ -331,6 +332,16 @@ function DefaultsCard({ settings, models, onChange }: { settings: AISettings; mo
           <input type="number" min={0} {...num("daily_request_budget")} className={input} />
         </label>
       </div>
+      <label className="mt-4 flex items-start gap-2 text-sm text-nx-text">
+        <input type="checkbox" className="mt-1" checked={form.chat_thinking} onChange={(e) => setForm({ ...form, chat_thinking: e.target.checked })} />
+        <span>
+          Think before replying in chat and voice
+          <span className="block text-xs text-nx-faint">
+            Off (recommended): employees answer directly — the first words arrive in about a second. On: reasoning models think first, which can take 5–15
+            seconds per reply. Workflows and email drafts always think.
+          </span>
+        </span>
+      </label>
       <p className="mt-3 text-xs text-nx-faint">
         Reasoning models spend part of the output tokens thinking; keep max output tokens comfortably above the reply length you expect. Departments also
         have their own budget and concurrency limits.

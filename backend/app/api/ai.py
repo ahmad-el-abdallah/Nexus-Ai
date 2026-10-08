@@ -66,6 +66,7 @@ class AISettingsOut(BaseModel):
     concurrency_limit: int
     daily_request_budget: int
     paused: bool
+    chat_thinking: bool
     key: KeyStatus
     last_test: LastTest
 
@@ -81,6 +82,7 @@ class AISettingsPatch(BaseModel):
     concurrency_limit: int | None = Field(default=None, ge=1, le=16)
     daily_request_budget: int | None = Field(default=None, ge=0, le=1_000_000)
     paused: bool | None = None
+    chat_thinking: bool | None = None
 
 
 class KeyIn(BaseModel):
@@ -114,6 +116,7 @@ def _settings_out(gw: AIGateway, cfg: AIProviderSettings) -> AISettingsOut:
         concurrency_limit=cfg.concurrency_limit,
         daily_request_budget=cfg.daily_request_budget,
         paused=cfg.paused,
+        chat_thinking=cfg.chat_thinking,
         key=_key_status(gw, cfg),
         last_test=LastTest(at=cfg.last_test_at, ok=cfg.last_test_ok, message=cfg.last_test_message),
     )
@@ -158,6 +161,7 @@ async def update_settings(patch: AISettingsPatch, session: Session, gw: Gateway)
         "concurrency_limit",
         "daily_request_budget",
         "paused",
+        "chat_thinking",
     ):
         if name in fields and getattr(patch, name) is not None:
             setattr(cfg, name, getattr(patch, name))

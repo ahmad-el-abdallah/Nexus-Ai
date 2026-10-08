@@ -299,3 +299,11 @@ No 3-second countdown (sent as soon as the owner stops talking, 0.8 s of silence
 replies spoken sentence by sentence while they are written, short spoken-style answers
 without tables or lists, a single-pass English/Arabic transcription, and the employee's
 3D face on screen with the mouth moving to the voice, blinking and nodding. A ⛶ button shows the employee full screen.
+
+### Follow-up (owner request): faster replies
+
+Replies spent 80–90 % of their tokens on hidden reasoning (4–13 s per answer). Chat and
+voice now ask the model to answer directly: first words in ~1 s (was ~8 s for the same
+question), 0 reasoning tokens. A setting turns thinking back on; workflows and email
+drafts keep it.
+

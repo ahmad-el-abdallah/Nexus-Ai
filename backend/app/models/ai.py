@@ -5,6 +5,7 @@ from __future__ import annotations
 from datetime import datetime
 
 from sqlalchemy import Boolean, Float, ForeignKey, Integer, String, Text, func
+from sqlalchemy import false as sa_false
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base, TimestampMixin, UTCDateTime
@@ -25,6 +26,10 @@ class AIProviderSettings(TimestampMixin, Base):
     daily_request_budget: Mapped[int] = mapped_column(Integer, nullable=False, default=500)
     # Emergency stop: when true, no request leaves the application.
     paused: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    # Chat and voice replies: let reasoning models think first (slower) or answer directly.
+    chat_thinking: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default=sa_false()
+    )
     # API key saved through the app, encrypted with NEXUS_SECRET_KEY (never plaintext).
     encrypted_api_key: Mapped[str | None] = mapped_column(Text, nullable=True)
     key_updated_at: Mapped[datetime | None] = mapped_column(UTCDateTime(), nullable=True)

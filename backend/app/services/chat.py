@@ -338,8 +338,14 @@ class ChatService:
         )
         events: AsyncIterator[StreamEvent] | None = None
         try:
+            cfg = await self.gateway.config(session)
             route, events = await self.gateway.stream(
-                session, history, employee_id=responder.id, purpose="chat", context=context
+                session,
+                history,
+                employee_id=responder.id,
+                purpose="chat",
+                context=context,
+                thinking=cfg.chat_thinking,
             )
             message.model, message.model_source = route.model, route.source
         except GatewayError as error:

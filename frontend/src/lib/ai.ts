@@ -20,12 +20,14 @@ export interface AISettings {
   concurrency_limit: number;
   daily_request_budget: number;
   paused: boolean;
+  /** Chat and voice: let reasoning models think before answering (slower). */
+  chat_thinking: boolean;
   key: KeyStatus;
   last_test: { at: string | null; ok: boolean | null; message: string | null };
 }
 
 export type AISettingsPatch = Partial<
-  Pick<AISettings, "base_url" | "default_model" | "max_output_tokens" | "temperature" | "timeout_seconds" | "concurrency_limit" | "daily_request_budget" | "paused">
+  Pick<AISettings, "base_url" | "default_model" | "max_output_tokens" | "temperature" | "timeout_seconds" | "concurrency_limit" | "daily_request_budget" | "paused" | "chat_thinking">
 >;
 
 export interface AIModel {

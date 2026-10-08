@@ -238,6 +238,11 @@ async def company_briefing(session: AsyncSession, employee: Employee) -> str:
         "Your current tasks: "
         + ("; ".join(f"“{t.title}” ({t.status.replace('_', ' ')})" for t in mine) or "none")
     )
+    lines.append(
+        "Only these recorded tasks are real work. Never say that you or a colleague are "
+        "working on, have built, or will deliver something that isn't recorded here — "
+        "ideas discussed in a chat are not work in progress until the owner makes them a task."
+    )
     lines += [
         "",
         f"COMPANY DIRECTORY ({len(facts.departments)} departments, {len(facts.people)} employees):",

@@ -114,6 +114,13 @@ class StreamEvent:
     completion: Completion | None = None
 
 
+def can_switch_thinking(model: str) -> bool:
+    """Nemotron models on NVIDIA's API turn their reasoning off with
+    `chat_template_kwargs.enable_thinking` (measured: first words in ~0.5 s instead of
+    up to 8 s). Other models are sent nothing they might not understand."""
+    return "nemotron" in model.lower()
+
+
 def _usage(payload: dict[str, Any], completion: Completion) -> None:
     usage = payload.get("usage") or {}
     completion.prompt_tokens = usage.get("prompt_tokens", completion.prompt_tokens)
@@ -161,6 +168,7 @@ class OpenAICompatibleProvider:
         max_tokens: int,
         temperature: float,
         stream: bool,
+        thinking: bool = True,
     ) -> dict[str, Any]:
         body: dict[str, Any] = {
             "model": model,
@@ -171,17 +179,25 @@ class OpenAICompatibleProvider:
         }
         if stream:
             body["stream_options"] = {"include_usage": True}
+        if not thinking and can_switch_thinking(model):
+            # Answer directly: no hidden reasoning before the first visible word.
+            body["chat_template_kwargs"] = {"enable_thinking": False}
         return body
 
     async def complete(
-        self, model: str, messages: list[dict[str, str]], max_tokens: int, temperature: float
+        self,
+        model: str,
+        messages: list[dict[str, str]],
+        max_tokens: int,
+        temperature: float,
+        thinking: bool = True,
     ) -> Completion:
         started = time.perf_counter()
         try:
             async with self._client() as client:
                 response = await client.post(
                     f"{self.base_url}/chat/completions",
-                    json=self._body(model, messages, max_tokens, temperature, False),
+                    json=self._body(model, messages, max_tokens, temperature, False, thinking),
                 )
         except httpx.TimeoutException as error:
             raise ProviderError(
@@ -207,7 +223,12 @@ class OpenAICompatibleProvider:
         return completion
 
     async def stream(
-        self, model: str, messages: list[dict[str, str]], max_tokens: int, temperature: float
+        self,
+        model: str,
+        messages: list[dict[str, str]],
+        max_tokens: int,
+        temperature: float,
+        thinking: bool = True,
     ) -> AsyncIterator[StreamEvent]:
         """Server-sent events → StreamEvents. Reasoning text is never forwarded, only signalled."""
         started = time.perf_counter()
@@ -218,7 +239,7 @@ class OpenAICompatibleProvider:
                 client.stream(
                     "POST",
                     f"{self.base_url}/chat/completions",
-                    json=self._body(model, messages, max_tokens, temperature, True),
+                    json=self._body(model, messages, max_tokens, temperature, True, thinking),
                 ) as response,
             ):
                 if response.status_code != 200:

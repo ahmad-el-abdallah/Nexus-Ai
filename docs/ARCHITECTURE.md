@@ -512,7 +512,13 @@ CEO (capped at 14 kB).
   WebGL, initials with a level bar. ⛶ shows the employee full screen while
   talking (Talk / Stop speaking / Exit / End below; Esc exits). Silence or an empty transcript pauses listening, so
   the loop never runs on its own. Mute mic, mute voice and end are always available.
-  Measured with the real model: a spoken reply starts arriving ~2.5 s after sending.
+  Measured with the real model: a spoken reply starts arriving ~1 s after sending.
+- **Fast replies:** chat and voice replies ask reasoning models to answer directly
+  (`chat_template_kwargs.enable_thinking=false`, sent only to Nemotron models, which
+  support it). Measured on Nemotron 3 Super: first words in ~0.5–1 s instead of up to
+  8 s, with 0 reasoning tokens (replies had spent 80–90 % of their tokens thinking).
+  Settings → AI providers → "Think before replying in chat and voice" turns it back on.
+  Workflows and email drafts always think.
 - **Errors** are explained, never crashes: blocked permission, no device, device busy,
   insecure page, unsupported browser, model not installed, too short/long, unreadable
   audio. Text input always keeps working.
