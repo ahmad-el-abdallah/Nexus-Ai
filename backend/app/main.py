@@ -12,7 +12,6 @@ from datetime import UTC, datetime
 import httpx
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from sqlalchemy import text
 
 from app.ai.gateway import AIGateway
 from app.api import (
@@ -23,6 +22,7 @@ from app.api import (
     employees,
     events,
     health,
+    runs,
     tasks,
     voice,
     workflows,
@@ -31,9 +31,11 @@ from app.core.config import APP_VERSION, Environment, Settings, get_settings
 from app.core.events import EventBus, install_shutdown_hook
 from app.core.logging import configure_logging, get_logger
 from app.core.middleware import RequestContextMiddleware
+from app.db.migrations import get_migration_state
 from app.db.session import Database
 from app.email.service import EmailService
 from app.orchestration.engine import Orchestrator
+from app.sandbox.service import RunService
 from app.services.activity import ActivityTracker
 from app.services.chat import ChatService
 from app.services.task_runner import TaskRunner
@@ -44,12 +46,11 @@ install_shutdown_hook()
 
 
 async def _schema_ready(database: Database) -> bool:
-    """Startup housekeeping only runs on a migrated database (readiness reports the rest)."""
+    """Startup housekeeping only runs on a fully migrated database (readiness reports
+    pending migrations); otherwise a reload before `make migrate` would crash startup."""
     try:
-        async with database.engine.connect() as connection:
-            await connection.execute(text("SELECT 1 FROM email_events LIMIT 1"))  # newest table
-        return True
-    except Exception:  # missing tables or an unreachable database
+        return (await get_migration_state(database.engine)).up_to_date
+    except Exception:  # an unreachable database
         return False
 
 
@@ -74,6 +75,7 @@ def create_app(
         app.state.chat = ChatService(
             app.state.db, app.state.ai, app.state.events, app.state.activity
         )
+        app.state.runs = RunService(app.state.db, app.state.events, settings.runs_dir)
         app.state.tasks = TaskRunner(
             app.state.db, app.state.ai, app.state.events, app.state.activity, app.state.chat
         )
@@ -105,6 +107,7 @@ def create_app(
         if await _schema_ready(app.state.db):
             await app.state.chat.recover()
             await app.state.tasks.recover()
+            await app.state.runs.recover()
             await app.state.workflows.recover()
             await app.state.activity.recover()
             await app.state.email.recover()
@@ -115,6 +118,7 @@ def create_app(
             await app.state.workflows.shutdown()
             await app.state.email.shutdown()
             await app.state.tasks.shutdown()
+            await app.state.runs.shutdown()
             await app.state.chat.shutdown()
             await app.state.activity.shutdown()
             await app.state.voice.shutdown()
@@ -147,4 +151,5 @@ def create_app(
     app.include_router(voice.router)
     app.include_router(workflows.router)
     app.include_router(email.router)
+    app.include_router(runs.router)
     return app

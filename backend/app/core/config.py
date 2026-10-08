@@ -66,6 +66,8 @@ class Settings(BaseSettings):
 
     # --- Voice (Stage 7): local speech models live here, downloaded on request -
     voice_dir: Path = Field(default=BACKEND_DIR / "var" / "voice", alias="NEXUS_VOICE_DIR")
+    # Sandbox runs (Stage 9 follow-up): each run's work folder and the files it wrote.
+    runs_dir: Path = Field(default=BACKEND_DIR / "var" / "runs", alias="NEXUS_RUNS_DIR")
     # Test-only stand-in speech engines (refused outside NEXUS_ENV=test).
     voice_fake: bool = Field(default=False, alias="NEXUS_VOICE_FAKE")
 

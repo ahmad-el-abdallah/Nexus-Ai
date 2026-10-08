@@ -225,21 +225,23 @@ class TaskRunner:
             await self.activity.end(
                 employee.id, token, "error", f"Task failed: {title}", screen_failed=True
             )
-            await self._finish(task_id, TaskStatus.FAILED, error=str(error))
+            # Report in the chat first, so "failed" never shows without the reason there.
             await self._post(
                 task_id, employee, f"I couldn't finish the task “{title}”: {error}", failed=True
             )
+            await self._finish(task_id, TaskStatus.FAILED, error=str(error))
             return
         finally:
             self.running.pop(task_id, None)
         await self.activity.end(employee.id, token, "completed", f"Finished: {title}")
-        await self._finish(task_id, TaskStatus.DONE, result=result, completion=completion)
+        # The result is in the chat before the task shows as done.
         await self._post(
             task_id,
             employee,
             f"✅ **Task done: {title}**\n\n{result}",
             model=completion.model if completion else None,
         )
+        await self._finish(task_id, TaskStatus.DONE, result=result, completion=completion)
 
     async def _finish(
         self,

@@ -83,6 +83,18 @@ class CallStats:
     http_status: int | None = None
 
 
+# Departments that write code the owner may run in NEXUS's sandbox.
+CODE_DEPARTMENTS = ("engineering", "it", "data", "quality-assurance", "security")
+SANDBOX_NOTE = (
+    "Code you write can be run by the owner in NEXUS's sandbox (after they approve it): "
+    "put each runnable program in one self-contained code block marked python, javascript "
+    "or bash. The sandbox has Python 3 with its standard library only (no pip installs), "
+    "Node.js and Bash; no internet; only its own empty work folder (files the program "
+    "writes there can be downloaded by the owner); 30 seconds and 512 MB at most. Use "
+    "sample data inside the code when real data isn't available, and say so."
+)
+
+
 def system_prompt(
     employee: Employee, department: Department | None, context: str | None = None
 ) -> str:
@@ -100,6 +112,8 @@ def system_prompt(
         "Language: write only in English or Arabic — Arabic when the owner writes to you in Arabic,",
         "otherwise English. Never use any other language, and never translate the owner's words back to them.",
     ]
+    if employee.department in CODE_DEPARTMENTS:
+        lines.append(SANDBOX_NOTE)
     if employee.gender == "female":
         lines.append(
             "You are a woman. In Arabic, always use feminine forms when you speak about yourself "

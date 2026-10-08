@@ -19,6 +19,7 @@ import { useVoiceStore } from "@/world/state/voiceStore";
 
 import { TargetAvatar, useTargetName } from "./ConversationList";
 import { Markdown } from "./Markdown";
+import { type RunRequest, RunDialog } from "./RunDialog";
 import { type TaskSource, TaskDialog } from "./TaskDialog";
 
 const NO_MESSAGES: Message[] = [];
@@ -70,6 +71,7 @@ function MessageItem({
   speaking,
   canListen,
   onDelegate,
+  onRun,
 }: {
   m: Message;
   state: ReplyState | null;
@@ -82,6 +84,8 @@ function MessageItem({
   speaking: string | null;
   canListen: boolean;
   onDelegate: (m: Message) => void;
+  /** Runs a code block from this reply in the sandbox (after the owner approves it). */
+  onRun: (m: Message, code: string, language: string) => void;
 }) {
   const departmentName = useDepartmentStore((s) => s.departments.find((d) => d.key === m.author_department)?.name);
   const [copied, setCopied] = useState(false);
@@ -184,7 +188,7 @@ function MessageItem({
           </span>
         </p>
         <div className="mt-1 rounded-2xl rounded-tl-md bg-white/[0.04] px-4 py-2.5 ring-1 ring-nx-line">
-          {m.content && <Markdown text={m.content} streaming={streaming && state === "writing"} />}
+          {m.content && <Markdown text={m.content} streaming={streaming && state === "writing"} onRun={streaming ? undefined : (code, language) => onRun(m, code, language)} />}
           {streaming && state !== "writing" && (
             <p className="flex items-center gap-2 text-sm text-nx-muted" role="status">
               <span className="nx-pulse size-2 rounded-full bg-nx-cyan" />
@@ -240,6 +244,7 @@ export function ConversationView({
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [task, setTask] = useState<TaskSource | null>(null);
+  const [run, setRun] = useState<RunRequest | null>(null);
   const [renaming, setRenaming] = useState(false);
   const listRef = useRef<HTMLDivElement>(null);
   const fileInput = useRef<HTMLInputElement>(null);
@@ -453,6 +458,7 @@ export function ConversationView({
                   router.push(`/workflows/${workflow.id}`);
                 })
               }
+              onRun={(msg, code, language) => setRun({ code, language, messageId: msg.id })}
               onRetry={() => id && void act(() => useChatStore.getState().retry(id))}
               onTask={(msg) =>
                 id &&
@@ -542,6 +548,7 @@ export function ConversationView({
       </form>
 
       {task && <TaskDialog source={task} onClose={() => setTask(null)} />}
+      {run && <RunDialog request={run} onClose={() => setRun(null)} />}
     </div>
   );
 }

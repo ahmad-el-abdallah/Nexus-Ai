@@ -315,3 +315,11 @@ the task board shows running / done (with the result) / failed (Run again) and c
 cancel. Real run: Sameer Abuhummus delivered a full design for an API error-rate
 monitoring tool in 18 s.
 
+### Follow-up (owner request): run employee code safely
+
+▶ Run on Python / JavaScript / Bash code blocks in replies and task results: the owner
+approves the exact code, then it runs in a bubblewrap sandbox (no internet, no access
+to the owner's files, 30 s / 512 MB / 64 processes) and the output, exit code and
+created files appear in the dialog. Real run: Sameer Abuhummus wrote a 91-line error-
+rate script for a task (13 s); approved, it ran in 49 ms and produced error_report.csv.
+

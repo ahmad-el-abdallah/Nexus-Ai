@@ -93,6 +93,18 @@ test.describe("Text communication", () => {
     await expect(report).toContainText("Task done: Review the attached brief", { timeout: 15_000 });
     await expect(report).toContainText("three concrete steps");
 
+    // Code in the result runs in the sandbox only after approval; output and files come back.
+    await report.getByTestId("code-block").getByRole("button", { name: "▶ Run" }).click();
+    const run = page.getByTestId("run-dialog");
+    await expect(run.getByTestId("run-code")).toContainText("print('report ready')");
+    await run.getByRole("button", { name: "Approve and run" }).click();
+    await expect(run.getByTestId("run-result")).toHaveAttribute("data-status", "succeeded", { timeout: 20_000 });
+    await expect(run.getByTestId("run-stdout")).toContainText("report ready");
+    const download = page.waitForEvent("download");
+    await run.getByRole("link", { name: /report\.txt/ }).click();
+    expect((await download).suggestedFilename()).toBe("report.txt");
+    await run.getByRole("button", { name: "Close" }).click();
+
     await page.goto("/departments/marketing");
     const task = page.getByTestId("task").filter({ hasText: "Review the attached brief" }).first();
     await expect(task).toContainText("Done");

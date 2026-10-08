@@ -12,6 +12,7 @@ from app.models.chat import (
 from app.models.department import Department
 from app.models.email import EmailAccount, EmailEvent, EmailMessage, EmailStatus
 from app.models.employee import Employee, EmployeeStatus
+from app.models.run import CodeRun, RunStatus
 from app.models.system import SystemMetadata
 from app.models.task import TERMINAL, Task, TaskStatus
 from app.models.voice import VoiceSettings
@@ -24,6 +25,7 @@ __all__ = [
     "AIProviderSettings",
     "AIUsage",
     "Attachment",
+    "CodeRun",
     "Conversation",
     "ConversationKind",
     "Department",
@@ -36,6 +38,7 @@ __all__ = [
     "Message",
     "MessageRole",
     "MessageStatus",
+    "RunStatus",
     "SystemMetadata",
     "Task",
     "TaskStatus",

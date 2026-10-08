@@ -60,7 +60,11 @@ def canned_reply(prompt: str) -> str | None:
             }
         )
     if "Format: NEXUS-TASK/1" in prompt:
-        return "## Deliverable\n\nThe finished task: three concrete steps.\n\n1. Step one.\n2. Step two.\n3. Step three.\n\n*Assumption:* details to confirm."
+        return (
+            "## Deliverable\n\nThe finished task: three concrete steps.\n\n1. Step one.\n2. Step two.\n3. Step three.\n\n"
+            "*Assumption:* details to confirm.\n\n```python\nprint('report ready')\n"
+            "open('report.txt', 'w').write('42')\n```\n"
+        )
     if "Format: NEXUS-EMAIL/1" in prompt:
         return json.dumps(
             {

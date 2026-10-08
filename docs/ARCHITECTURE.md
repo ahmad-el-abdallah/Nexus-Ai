@@ -464,6 +464,23 @@ the reason and a "Run again" button; a running task can be cancelled; a restart 
 interrupted tasks failed. Recorded-only tasks can still be handed to the CEO as a
 workflow. Agents produce text only, so running a task needs no approval.
 
+### Running employee code in a sandbox (`app/sandbox/`)
+
+Code blocks in an employee's reply or task result have Copy, Download and — for
+Python, JavaScript and Bash — **▶ Run**. Run prepares a `code_runs` row (the code must
+appear verbatim in that reply/result); the owner reads the exact code and the sandbox
+rules and clicks **Approve and run**, which sends the code's SHA-256 — only then, once,
+does the backend run it (atomic `pending_approval → running`). One run at a time.
+
+The sandbox is bubblewrap inside a systemd user scope, no root needed: own empty
+network namespace (no internet), only `/usr` read-only plus an empty work folder (the
+owner's files are invisible; `HOME` is the work folder), empty environment (no keys),
+own PID namespace, at most 64 processes, 512 MB memory without swap, one CPU core,
+30 seconds. stdout/stderr (64 k characters each), exit code and duration are stored;
+files the program writes (≤ 20 files, 5 MB) are kept in `backend/var/runs/<id>/files`
+(`NEXUS_RUNS_DIR`) and downloaded as attachments (`nosniff`). Engineering, IT, Data, QA
+and Security employees are told these rules so their code runs there.
+
 ### Company knowledge for every employee
 
 Every AI call made for an employee (chat, voice, workflows, email drafts) carries a live

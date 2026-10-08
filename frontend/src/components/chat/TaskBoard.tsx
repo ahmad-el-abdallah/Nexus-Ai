@@ -6,6 +6,7 @@ import { useCallback, useEffect, useState } from "react";
 
 import { relativeTime } from "@/components/hq/people";
 import { Markdown } from "@/components/chat/Markdown";
+import { type RunRequest, RunDialog } from "@/components/chat/RunDialog";
 import { fetchTasks, runTask, type Task, updateTask } from "@/lib/chat";
 import { liveEvents } from "@/lib/events";
 import { createWorkflow } from "@/lib/workflows";
@@ -26,6 +27,7 @@ export function TaskBoard({ department }: { department: string }) {
   const [showAll, setShowAll] = useState(false);
   const [openResult, setOpenResult] = useState<string | null>(null);
   const [now] = useState(() => Date.now());
+  const [run, setRun] = useState<RunRequest | null>(null);
   const router = useRouter();
 
   const load = useCallback(async () => {
@@ -174,7 +176,7 @@ export function TaskBoard({ department }: { department: string }) {
           </button>
           {openResult === t.id && (
             <div className="mt-2 rounded-lg bg-nx-bg/60 p-3 text-sm ring-1 ring-nx-line" data-testid="task-result">
-              <Markdown text={t.result} />
+              <Markdown text={t.result} onRun={(code, language) => setRun({ code, language, taskId: t.id })} />
             </div>
           )}
         </div>
@@ -184,6 +186,7 @@ export function TaskBoard({ department }: { department: string }) {
 
   return (
     <div>
+      {run && <RunDialog request={run} onClose={() => setRun(null)} />}
       {error && (
         <p role="alert" className="mt-3 text-sm text-nx-error">
           {error}

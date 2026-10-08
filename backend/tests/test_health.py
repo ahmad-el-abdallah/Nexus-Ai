@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+from typing import Any
 
 import httpx
 
@@ -103,3 +104,18 @@ async def test_cors_allows_only_configured_origins(client: httpx.AsyncClient) ->
 
     denied = await client.get("/api/health/live", headers={"Origin": "https://evil.example.com"})
     assert "access-control-allow-origin" not in denied.headers
+
+
+async def test_a_database_one_migration_behind_still_starts(
+    db_url: str, make_settings: Any, make_client: Any
+) -> None:
+    """A dev server reloading new code before `make migrate` must not crash."""
+    import asyncio
+
+    from tests.conftest import run_migrations
+
+    await asyncio.to_thread(run_migrations, db_url, "0010_chat_thinking")
+    async with make_client(make_settings(NEXUS_DATABASE_URL=db_url)) as http:
+        response = await http.get("/api/health/ready")
+    assert response.status_code == 503
+    assert response.json()["components"]["migrations"]["status"] == "migrations_pending"
