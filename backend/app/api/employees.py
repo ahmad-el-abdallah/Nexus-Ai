@@ -10,6 +10,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.api.ai import require_model
 from app.core.logging import get_logger
 from app.db.session import get_session
 from app.models import Employee, EmployeeStatus
@@ -37,6 +38,7 @@ class EmployeeOut(BaseModel):
     seniority: str
     desk_id: str | None
     supervisor_id: str | None
+    model_id: str | None
     avatar_seed: int
     status: EmployeeStatus
     status_detail: str | None
@@ -63,6 +65,7 @@ class EmployeePatch(BaseModel):
     seniority: str | None = None
     desk_id: str | None = None
     supervisor_id: str | None = None
+    model_id: str | None = None
 
 
 def _org_error(error: OrgError) -> HTTPException:
@@ -120,6 +123,9 @@ async def edit_employee(employee_id: str, body: EmployeePatch, session: Session)
     """Owner action: rename, change role, move department, re-seat or re-report."""
     employee = await _get(session, employee_id)
     fields = body.model_fields_set
+    if "model_id" in fields:
+        await require_model(session, body.model_id)
+        employee.model_id = body.model_id
     changes = EmployeeChanges(
         name=body.name,
         role=body.role,

@@ -5,7 +5,7 @@
  * the browser never needs the backend address or any credentials.
  */
 
-export type ComponentStatus = "ok" | "error" | "migrations_pending" | "planned";
+export type ComponentStatus = "ok" | "error" | "migrations_pending" | "planned" | "configured" | "not_configured" | "paused";
 
 export interface HealthComponent {
   status: ComponentStatus;

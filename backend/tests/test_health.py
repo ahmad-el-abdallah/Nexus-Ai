@@ -23,11 +23,11 @@ async def test_readiness_ok_on_migrated_database(client: httpx.AsyncClient) -> N
     assert components["migrations"]["data"]["current"] == components["migrations"]["data"]["head"]
 
 
-async def test_unbuilt_integrations_are_reported_as_planned_not_ok(
+async def test_integrations_report_their_real_state_never_ok_by_default(
     client: httpx.AsyncClient,
 ) -> None:
     components = (await client.get("/api/health/ready")).json()["components"]
-    assert components["ai_provider"]["status"] == "planned"
+    assert components["ai_provider"]["status"] == "not_configured"
     assert components["ai_provider"]["critical"] is False
     assert components["ai_provider"]["data"]["key_present"] is False
     assert components["email"]["status"] == "planned"

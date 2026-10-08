@@ -3,6 +3,9 @@ import { defineConfig, devices } from "@playwright/test";
 const PORT = Number(process.env.E2E_PORT ?? 3200);
 const API_PORT = Number(process.env.E2E_API_PORT ?? 18200);
 const DB = `/tmp/nexus-e2e-${API_PORT}.db`;
+const FAKE_AI_PORT = Number(process.env.E2E_FAKE_AI_PORT ?? 18300);
+// Matches backend/tests/fake_provider.py — e2e never calls the real NVIDIA API.
+const FAKE_AI_KEY = "fake-e2e-key-0123456789abcdef";
 // Render with the machine's GPU through ANGLE/OpenGL; headless Chrome would
 // otherwise use the much slower SwiftShader software renderer.
 const GPU_ARGS = process.env.E2E_SOFTWARE_GL ? [] : ["--use-angle=gl", "--enable-gpu", "--ignore-gpu-blocklist"];
@@ -39,10 +42,24 @@ export default defineConfig({
   ],
   webServer: [
     {
+      command: `uv run --frozen uvicorn tests.fake_provider:app --host 127.0.0.1 --port ${FAKE_AI_PORT}`,
+      cwd: "../backend",
+      url: `http://127.0.0.1:${FAKE_AI_PORT}/docs`,
+      timeout: 60_000,
+      reuseExistingServer: false,
+    },
+    {
       // Isolated backend with a fresh, migrated throwaway database.
       command: `rm -f ${DB}* && uv run --frozen alembic upgrade head && uv run --frozen python -m app`,
       cwd: "../backend",
-      env: { NEXUS_DATABASE_URL: `sqlite+aiosqlite:///${DB}`, NEXUS_PORT: String(API_PORT), NEXUS_ENV: "test", NEXUS_LOG_LEVEL: "WARNING" },
+      env: {
+        NEXUS_DATABASE_URL: `sqlite+aiosqlite:///${DB}`,
+        NEXUS_PORT: String(API_PORT),
+        NEXUS_ENV: "test",
+        NEXUS_LOG_LEVEL: "WARNING",
+        NVIDIA_API_KEY: FAKE_AI_KEY,
+        NVIDIA_BASE_URL: `http://127.0.0.1:${FAKE_AI_PORT}/v1`,
+      },
       url: `http://127.0.0.1:${API_PORT}/api/health/ready`,
       timeout: 60_000,
       reuseExistingServer: false,

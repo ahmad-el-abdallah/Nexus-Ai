@@ -19,7 +19,10 @@ function componentTone(component: HealthComponent | undefined): Tone {
     case "ok":
       return "ok";
     case "migrations_pending":
+    case "paused":
       return "warn";
+    case "configured":
+    case "not_configured":
     case "error":
       return "error";
     case "planned":
@@ -78,11 +81,20 @@ export function buildRows(state: SystemStatusState): Row[] {
     },
     {
       label: "AI provider · NVIDIA",
-      value: plannedValue(ai),
-      detail: ai?.data.key_present
-        ? "API key detected (not tested until Stage 5)"
-        : "No API key configured yet",
-      tone: componentTone(ai),
+      value:
+        ai?.status === "ok"
+          ? `Connected · ${String(ai.data.default_model ?? "no default model")}`
+          : ai?.status === "configured"
+            ? "Key present · not tested"
+            : ai?.status === "not_configured"
+              ? "No API key"
+              : ai?.status === "paused"
+                ? "Paused (emergency stop)"
+                : ai?.status === "error"
+                  ? "Last connection test failed"
+                  : plannedValue(ai),
+      detail: ai?.detail ?? undefined,
+      tone: ai?.status === "configured" || ai?.status === "not_configured" ? "neutral" : componentTone(ai),
     },
     {
       label: "Company email",

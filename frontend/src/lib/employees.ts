@@ -20,6 +20,7 @@ export interface Employee {
   seniority: string;
   desk_id: string | null;
   supervisor_id: string | null;
+  model_id?: string | null;
   avatar_seed: number;
   status: EmployeeStatus;
   status_detail: string | null;
@@ -49,7 +50,9 @@ export async function request<T>(path: string, init?: RequestInit): Promise<T> {
         ? body.detail
         : body && Array.isArray(body.detail)
           ? body.detail.map((d: { msg?: string }) => d.msg).join("; ")
-          : `Request failed (${response.status})`;
+          : body && typeof body.detail?.message === "string"
+            ? body.detail.message
+            : `Request failed (${response.status})`;
     throw new ApiError(detail, response.status);
   }
   if (!isJson) throw new ApiError("Backend is unreachable", response.status);
@@ -70,6 +73,7 @@ export interface EmployeeDraft {
   seniority: Seniority;
   desk_id: string | null;
   supervisor_id?: string | null;
+  model_id?: string | null;
 }
 
 export const createEmployee = (draft: EmployeeDraft) =>

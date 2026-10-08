@@ -51,6 +51,12 @@ def _run_sync(connection: Connection) -> None:
 async def run_migrations_online() -> None:
     engine = create_engine(_database_url())
     async with engine.connect() as connection:
+        if connection.dialect.name == "sqlite":
+            # SQLite batch migrations rebuild tables; referenced tables can't be
+            # dropped and recreated with FK enforcement on. It is restored per
+            # connection at runtime (see app/db/session.py).
+            await connection.exec_driver_sql("PRAGMA foreign_keys=OFF")
+            await connection.commit()
         await connection.run_sync(_run_sync)
         await connection.commit()
     await engine.dispose()

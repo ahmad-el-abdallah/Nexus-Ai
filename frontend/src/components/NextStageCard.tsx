@@ -1,6 +1,13 @@
 import { CURRENT_STAGE, STAGES } from "@/lib/stages";
 
 const NEXT_STAGE_SCOPE: Record<number, string[]> = {
+  6: [
+    "Chat with the CEO, a department or any employee",
+    "Streaming replies with conversation history",
+    "Task creation from chat",
+    "Searchable, persistent conversations",
+    "Correct routing — never the wrong department",
+  ],
   5: [
     "Secure NVIDIA API key handling (server-side only)",
     "Model discovery from the real catalogue",

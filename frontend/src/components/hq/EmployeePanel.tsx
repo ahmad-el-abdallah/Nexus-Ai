@@ -6,6 +6,7 @@ import { STATUS_META } from "@/world/characters/status";
 import { officeWorld } from "@/world/characters/world";
 import { WORKSTATIONS } from "@/world/layout/building";
 import { ROOM_BY_ID } from "@/world/layout/queries";
+import { useAIStore } from "@/world/state/aiStore";
 import { useEmployeeStore } from "@/world/state/employeeStore";
 import { useOfficeStore } from "@/world/state/officeStore";
 
@@ -32,6 +33,10 @@ export function EmployeePanel() {
   // Read the clock only on the client, after mount (the page is prerendered).
   const [now, setNow] = useState<number | null>(null);
   const [editing, setEditing] = useState(false);
+  const route = useAIStore((s) => s.routing.find((r) => r.employee_id === id));
+  useEffect(() => {
+    if (id) void useAIStore.getState().refresh();
+  }, [id]);
   const dept = useDepartmentMeta(employee?.department ?? "");
 
   // "Doing" comes from the live 3D controller; refresh it twice a second.
@@ -56,7 +61,7 @@ export function EmployeePanel() {
     ["Office", employee.desk_id ? "On site" : "Remote — no desk"],
     ["Seniority", employee.seniority[0].toUpperCase() + employee.seniority.slice(1)],
     ["Desk", deskLabel(employee.desk_id)],
-    ["AI model", "Not connected (Stage 5)"],
+    ["AI model", route?.model ? `${route.model.split("/").pop()} (${route.source})` : "None selected"],
   ];
 
   return (

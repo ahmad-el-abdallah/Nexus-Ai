@@ -12,6 +12,9 @@ import { ROOM_BY_ID } from "@/world/layout/queries";
 import { useDepartmentStore } from "@/world/state/departmentStore";
 import { useEmployeeStore } from "@/world/state/employeeStore";
 
+import { ModelPicker } from "@/components/settings/ModelPicker";
+import { useAIStore } from "@/world/state/aiStore";
+
 import { AppShell, LoadState } from "./AppShell";
 
 function deskName(deskId: string | null): string {
@@ -211,6 +214,7 @@ function DepartmentConfig({ department, team }: { department: Department; team: 
     color: department.color,
     room_id: department.room_id ?? "",
     director_id: department.director_id ?? "",
+    model_id: department.model_id ?? null,
     max_concurrent_tasks: department.max_concurrent_tasks,
     daily_request_budget: department.daily_request_budget,
   }));
@@ -226,6 +230,7 @@ function DepartmentConfig({ department, team }: { department: Department; team: 
         director_id: form.director_id || null,
       });
       void refreshEmployees(); // reporting lines may have changed with a new director
+      void useAIStore.getState().refresh();
       setState({ saving: false, message: "Saved.", error: null });
     } catch (err) {
       setState({ saving: false, message: null, error: (err as Error).message });
@@ -275,6 +280,10 @@ function DepartmentConfig({ department, team }: { department: Department; team: 
             ))}
           </select>
         </label>
+        <label className={`${labelCls} md:col-span-2`}>
+          AI model for this department
+          <ModelPicker label="AI model for this department" value={form.model_id} onChange={(v) => setForm({ ...form, model_id: v })} inheritLabel="Company default" className={input} />
+        </label>
         <label className={labelCls}>
           Max concurrent tasks
           <input type="number" min={1} max={20} value={form.max_concurrent_tasks} onChange={(e) => setForm({ ...form, max_concurrent_tasks: Number(e.target.value) })} className={input} />
@@ -284,7 +293,7 @@ function DepartmentConfig({ department, team }: { department: Department; team: 
           <input type="number" min={0} max={100000} value={form.daily_request_budget} onChange={(e) => setForm({ ...form, daily_request_budget: Number(e.target.value) })} className={input} />
         </label>
       </div>
-      <p className="mt-3 text-xs text-nx-faint">Limits are saved now and enforced once agents run (Stages 5 and 8).</p>
+      <p className="mt-3 text-xs text-nx-faint">The request budget and concurrency limit apply to every AI call made for this department&apos;s employees.</p>
       <div className="mt-4 flex items-center gap-3">
         <button type="submit" disabled={state.saving} className="rounded-lg bg-nx-violet/30 px-4 py-2 text-sm font-semibold text-white ring-1 ring-nx-violet/60 hover:bg-nx-violet/40 disabled:opacity-50">
           {state.saving ? "Saving…" : "Save configuration"}

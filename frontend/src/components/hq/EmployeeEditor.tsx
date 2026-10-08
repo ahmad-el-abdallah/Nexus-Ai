@@ -3,7 +3,9 @@
 import { type FormEvent, useEffect, useId, useMemo, useRef, useState } from "react";
 
 import { type Employee, type EmployeeDraft, SENIORITY, type Seniority } from "@/lib/employees";
+import { ModelPicker } from "@/components/settings/ModelPicker";
 import { WORKSTATIONS } from "@/world/layout/building";
+import { useAIStore } from "@/world/state/aiStore";
 import { ROOM_BY_ID } from "@/world/layout/queries";
 import { useDepartmentStore } from "@/world/state/departmentStore";
 import { useEmployeeStore } from "@/world/state/employeeStore";
@@ -40,6 +42,7 @@ export function EmployeeEditor({ employee, department, onClose, onSaved, onDelet
     seniority: (employee?.seniority as Seniority) ?? "mid",
     desk_id: employee?.desk_id ?? null,
     supervisor_id: employee?.supervisor_id ?? null,
+    model_id: employee?.model_id ?? null,
   }));
   const [supervisorTouched, setSupervisorTouched] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -93,7 +96,9 @@ export function EmployeeEditor({ employee, department, onClose, onSaved, onDelet
       // Unless the owner picked a supervisor, let the backend apply the default
       // (the department director) rather than sending a stale one.
       if (!supervisorTouched) delete body.supervisor_id;
+      if (!employee) delete body.model_id; // new hires inherit; set an override after hiring
       const saved = employee ? await edit(employee.id, body) : await hire(body as EmployeeDraft);
+      void useAIStore.getState().refresh();
       onSaved?.(saved);
       onClose();
     } catch (err) {
@@ -189,6 +194,12 @@ export function EmployeeEditor({ employee, department, onClose, onSaved, onDelet
               ))}
             </select>
           </label>
+          {employee && (
+            <label className={`${label} sm:col-span-2`}>
+              AI model
+              <ModelPicker label="AI model" value={draft.model_id ?? null} onChange={(v) => set("model_id", v)} inheritLabel="Department / company default" className={field} />
+            </label>
+          )}
           <label className={`${label} sm:col-span-2`}>
             Reports to
             <select

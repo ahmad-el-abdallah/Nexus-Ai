@@ -322,6 +322,44 @@ cosmetic and is visibly distinct from work state.
 - **No model sessions exist.** Agents are configurations until Stage 5. Nothing runs
   in the background per agent.
 
+### AI gateway (Stage 5)
+
+- **`app/ai/gateway.py` is the only path to a model.** Every call goes through, in
+  order:
+  1. the emergency stop
+  2. the global and per-department daily request budgets
+  3. the global and per-department concurrency limits
+  4. the provider call, with a timeout and up to 2 retries (backoff with jitter,
+     honouring `Retry-After`) on 429, 5xx and network errors
+  5. one `ai_usage` record: model, employee, department, purpose, outcome, error kind,
+     tokens (including reasoning tokens), latency, time to first token and retries.
+     **No prompt or reply text is ever stored.**
+  - Streams are retried only before their first token, so output is never duplicated.
+  - A cancelled stream is still recorded.
+  - **There is no fallback provider.**
+- **Provider:** `app/ai/provider.py`, an OpenAI-compatible client for NVIDIA
+  (`/models`, `/chat/completions`, SSE streaming). HTTP failures become clear kinds:
+  `auth`, `quota`, `model_unavailable`, `rate_limited`, `provider_unavailable`,
+  `timeout`, `network`, `bad_request`. Reasoning deltas are signalled ("thinking")
+  but never forwarded.
+- **Keys:**
+  - `NVIDIA_API_KEY` in `backend/.env`, or a key saved in the app, which is
+    Fernet-encrypted with `NEXUS_SECRET_KEY` and takes precedence
+  - never returned by any endpoint (only the last 4 characters), never logged
+- **Catalogue:** `ai_models` lists what NVIDIA lists. Listed is not the same as
+  usable: "Verify" sends one tiny request and records `verified_at` or the error.
+  Measured on the owner's key, 2 of 6 listed chat models returned 404 for the account.
+- **Routing:** employee `model_id` → department `model_id` → company default. Only
+  catalogued models can be assigned.
+- **Employees as agents:** calls made for an employee get a system prompt with their
+  name, role, department mission and responsibilities, and the rules (no fabrication,
+  no external actions, owner approval).
+- **UI:** Settings → AI providers covers key management, the connection test,
+  defaults, the catalogue (verify / set default), the usage dashboard and a streaming
+  playground. Department and employee editors have model pickers.
+- **Tests** use `httpx.MockTransport` (unit) and `backend/tests/fake_provider.py`
+  (e2e), so the suite never spends NVIDIA credits.
+
 ### Performance budget and measurements
 
 

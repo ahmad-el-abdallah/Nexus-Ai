@@ -5,10 +5,10 @@ from __future__ import annotations
 from datetime import datetime
 from enum import StrEnum
 
-from sqlalchemy import DateTime, ForeignKey, Integer, String, Text, func
+from sqlalchemy import ForeignKey, Integer, String, Text, func
 from sqlalchemy.orm import Mapped, mapped_column
 
-from app.db.base import Base, TimestampMixin
+from app.db.base import Base, TimestampMixin, UTCDateTime
 
 
 class EmployeeStatus(StrEnum):
@@ -43,6 +43,8 @@ class Employee(TimestampMixin, Base):
     supervisor_id: Mapped[str | None] = mapped_column(
         String(32), ForeignKey("employees.id", ondelete="SET NULL"), nullable=True
     )
+    # Model override (null: inherit). Resolution: employee → department → provider default.
+    model_id: Mapped[str | None] = mapped_column(String(200), nullable=True)
     # Seed for the deterministic avatar generator in the frontend.
     avatar_seed: Mapped[int] = mapped_column(Integer, nullable=False)
     status: Mapped[str] = mapped_column(
@@ -50,5 +52,5 @@ class Employee(TimestampMixin, Base):
     )
     status_detail: Mapped[str | None] = mapped_column(Text, nullable=True)
     status_changed_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now(), nullable=False
+        UTCDateTime(), server_default=func.now(), nullable=False
     )

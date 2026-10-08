@@ -152,7 +152,7 @@ describe("EmployeePanel", () => {
     expect(within(panel).getByRole("heading", { name: "Priya Nair" })).toBeInTheDocument();
     expect(screen.getByTestId("employee-status")).toHaveTextContent("Idle");
     expect(panel).toHaveTextContent("Sales · desk 2");
-    expect(panel).toHaveTextContent("Not connected (Stage 5)");
+    expect(panel).toHaveTextContent("AI modelNone selected");
     expect(panel).toHaveTextContent("None — tasks arrive in Stage 8");
   });
 

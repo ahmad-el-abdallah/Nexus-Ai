@@ -9,6 +9,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.api.ai import require_model
 from app.db.session import get_session
 from app.models import Department, Employee
 from app.services.org import DepartmentChanges, OrgError, update_department
@@ -29,6 +30,7 @@ class DepartmentOut(BaseModel):
     color: str
     room_id: str | None
     director_id: str | None
+    model_id: str | None
     max_concurrent_tasks: int
     daily_request_budget: int
     headcount: int = 0
@@ -42,6 +44,7 @@ class DepartmentPatch(BaseModel):
     color: str | None = Field(default=None, pattern=r"^#[0-9a-fA-F]{6}$")
     room_id: str | None = None
     director_id: str | None = None
+    model_id: str | None = None
     max_concurrent_tasks: int | None = Field(default=None, ge=1, le=20)
     daily_request_budget: int | None = Field(default=None, ge=0, le=100_000)
 
@@ -80,6 +83,9 @@ async def configure_department(key: str, patch: DepartmentPatch, session: Sessio
     if department is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Department not found")
     fields = patch.model_fields_set
+    if "model_id" in fields:
+        await require_model(session, patch.model_id)
+        department.model_id = patch.model_id
     changes = DepartmentChanges(
         name=patch.name,
         description=patch.description,

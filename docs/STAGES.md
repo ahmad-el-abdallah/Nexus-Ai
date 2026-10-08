@@ -8,8 +8,8 @@ reported, and the next stage starts only after the owner's explicit approval.
 | 1 | Repository, architecture & environment | ✅ Approved |
 | 2 | High-quality 3D office world | ✅ Approved |
 | 3 | AI employee characters | ✅ Approved |
-| 4 | Departments & organisational structure | ✅ Complete, awaiting approval for Stage 5 |
-| 5 | NVIDIA AI connection | ⏳ Not started |
+| 4 | Departments & organisational structure | ✅ Approved |
+| 5 | NVIDIA AI connection | ✅ Complete, awaiting approval for Stage 6 |
 | 6 | Text communication | ⏳ Not started |
 | 7 | Voice communication | ⏳ Not started |
 | 8 | Multi-agent task orchestration | ⏳ Not started |
@@ -111,3 +111,29 @@ reported, and the next stage starts only after the owner's explicit approval.
 | Organisation hierarchy works | PASS | Single tree under the CEO after hire / move / remove / new director / new CEO (backend tests); org chart e2e |
 | Changes persist | PASS | Department configuration survives reload (e2e); all edits verified via fresh API reads (backend tests) |
 | No 20 simultaneous model sessions | PASS (by design) | No agent runtime exists yet; agents are database records only |
+
+---
+
+## Stage 5 — NVIDIA AI connection
+
+**Completed:** 2026-10-08 · **Commit:** "Stage 5: NVIDIA AI connection"
+
+### Acceptance criteria
+
+| Criterion | Result | Evidence |
+| --- | --- | --- |
+| Real NVIDIA inference works with valid credentials | PASS | Owner's key: 80 models listed; 4 verified; connection test ok; streamed reply as Iris Wong via the Next.js proxy |
+| Invalid keys produce clear errors | PASS | "NVIDIA rejected the API key…" (backend test + e2e with a wrong saved key) |
+| Tokens are protected | PASS | Key never returned (only last 4), encrypted at rest when saved in-app, redacted from logs, absent from builds and tracked files |
+| Model configuration can change | PASS | Default / department / employee routing (backend tests + e2e) |
+| Usage and failures are tracked | PASS | `ai_usage` per attempt incl. rejected, retried, cancelled; usage dashboard (tests + e2e) |
+| No paid fallback | PASS | Gateway has a single provider; tests assert no other host is contacted |
+
+### Real-account findings (owner's key)
+
+- 80 models listed. Verified as working: `nvidia/nemotron-3-super-120b-a12b` (0.8 s),
+  `nvidia/nemotron-3.5-lightning-30b-a3b` (2.0 s), `openai/gpt-oss-20b` (2.4 s), `z-ai/glm-5.3-flash` (29 s).
+- Not available to this account (404): `nvidia/nemotron-nano-3-30b-a3b`, `mistralai/mistral-large-2-instruct`
+  (and 3 others probed earlier).
+- Several of these are reasoning models that spend output tokens on hidden reasoning; the UI
+  explains empty replies instead of failing silently.

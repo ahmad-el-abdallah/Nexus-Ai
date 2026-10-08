@@ -9,10 +9,12 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime
 
+import httpx
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api import departments, employees, health
+from app.ai.gateway import AIGateway
+from app.api import ai, departments, employees, health
 from app.core.config import APP_VERSION, Settings, get_settings
 from app.core.logging import configure_logging, get_logger
 from app.core.middleware import RequestContextMiddleware
@@ -21,7 +23,10 @@ from app.db.session import Database
 log = get_logger("nexus.app")
 
 
-def create_app(settings: Settings | None = None) -> FastAPI:
+def create_app(
+    settings: Settings | None = None, ai_transport: httpx.AsyncBaseTransport | None = None
+) -> FastAPI:
+    """`ai_transport` lets tests replace the network with a fake provider."""
     settings = settings or get_settings()
     configure_logging(settings.log_level, settings.log_format)
 
@@ -29,6 +34,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         app.state.settings = settings
         app.state.db = Database(settings.database_url)
+        app.state.ai = AIGateway(app.state.db, settings, transport=ai_transport)
         app.state.started_at = datetime.now(UTC)
         log.info(
             "app.startup",
@@ -65,4 +71,5 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(health.router)
     app.include_router(employees.router)
     app.include_router(departments.router)
+    app.include_router(ai.router)
     return app

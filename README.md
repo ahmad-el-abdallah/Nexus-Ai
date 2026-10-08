@@ -7,10 +7,10 @@ interactive 3D headquarters. Every department, employee, desk and meeting room m
 real system functionality: real tasks, real model calls, real approvals. Nothing on
 screen is simulated.
 
-> **Status: Stage 4 of 16 — Departments & organisation.** All 20 departments exist with
-> directors, roles, reporting lines, offices and configuration. You can hire, edit, move,
-> re-seat and remove AI employees from the department pages, the org chart or the 3D
-> office; every change is validated and saved. AI models connect in Stage 5. See
+> **Status: Stage 5 of 16 — NVIDIA AI connection.** A secure AI gateway connects to
+> NVIDIA's hosted models with streaming, verified model catalogue, per-department and
+> per-employee routing, retries, budgets, concurrency limits, an emergency stop and usage
+> tracking. Configure it in **Settings → AI providers**. Chat arrives in Stage 6. See
 > [`docs/STAGES.md`](docs/STAGES.md).
 
 ## Quick start

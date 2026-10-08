@@ -11,16 +11,19 @@ from sqlalchemy import select, text
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.api.ai import ai_status_for_health
 from app.core.config import APP_VERSION, Settings
 from app.core.logging import get_logger
 from app.db.migrations import get_migration_state
 from app.db.session import Database, get_session
-from app.models import SystemMetadata
+from app.models import AIProviderSettings, SystemMetadata
 
 router = APIRouter(prefix="/api", tags=["system"])
 log = get_logger("nexus.health")
 
-ComponentStatus = Literal["ok", "error", "migrations_pending", "planned"]
+ComponentStatus = Literal[
+    "ok", "error", "migrations_pending", "planned", "configured", "not_configured", "paused"
+]
 
 
 class Component(BaseModel):
@@ -80,13 +83,16 @@ async def ready(request: Request, response: Response) -> Readiness:
     else:
         components["migrations"] = Component(status="error", detail="Skipped: database unreachable")
 
-    # Integrations that do not exist yet are reported honestly, never as "ok".
+    # AI provider: summarised from settings and the last connection test (no network call).
+    ai_cfg = None
+    if components["migrations"].status == "ok":
+        async with database.sessionmaker() as session:
+            ai_cfg = await session.get(AIProviderSettings, "nvidia")
+    ai_status, ai_detail, ai_data = ai_status_for_health(ai_cfg, settings)
     components["ai_provider"] = Component(
-        status="planned",
-        critical=False,
-        detail="NVIDIA inference is connected in Stage 5",
-        data={"provider": "nvidia", "stage": 5, "key_present": settings.nvidia_api_key is not None},
+        status=ai_status, critical=False, detail=ai_detail, data=ai_data
     )
+    # Integrations that do not exist yet are reported honestly, never as "ok".
     components["email"] = Component(
         status="planned",
         critical=False,

@@ -26,6 +26,8 @@ class Department(TimestampMixin, Base):
         ForeignKey("employees.id", ondelete="SET NULL", use_alter=True),
         nullable=True,
     )
+    # Model override (null: inherit). Resolution: employee → department → provider default.
+    model_id: Mapped[str | None] = mapped_column(String(200), nullable=True)
     # Resource limits, stored now and enforced once agents run (Stages 5 and 8).
     max_concurrent_tasks: Mapped[int] = mapped_column(Integer, nullable=False, default=2)
     daily_request_budget: Mapped[int] = mapped_column(Integer, nullable=False, default=200)

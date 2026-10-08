@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+from datetime import datetime
 
 import httpx
 
@@ -41,7 +42,9 @@ async def test_suspend_and_activate_round_trip(client: httpx.AsyncClient) -> Non
     body = suspended.json()
     assert body["status"] == "suspended"
     assert body["status_detail"] == "Suspended by the owner"
-    assert body["status_changed_at"] >= emp["status_changed_at"]
+    changed = datetime.fromisoformat(body["status_changed_at"])
+    assert changed >= datetime.fromisoformat(emp["status_changed_at"])
+    assert changed.tzinfo is not None, "timestamps must carry their UTC offset"
 
     # Persisted, not just echoed.
     again = (await client.get(f"/api/employees/{emp['id']}")).json()

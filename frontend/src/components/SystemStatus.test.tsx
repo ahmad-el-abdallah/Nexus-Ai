@@ -26,10 +26,10 @@ function readiness(overrides: Partial<Readiness["components"]> = {}): Readiness 
       data: { current: "0001_initial", head: "0001_initial" },
     },
     ai_provider: {
-      status: "planned",
-      detail: null,
+      status: "not_configured",
+      detail: "No NVIDIA API key configured",
       critical: false,
-      data: { provider: "nvidia", stage: 5, key_present: false },
+      data: { provider: "nvidia", key_present: false, default_model: null },
     },
     email: { status: "planned", detail: null, critical: false, data: { stage: 9 } },
     ...overrides,
@@ -74,14 +74,23 @@ describe("SystemStatus", () => {
     expect(fetchMock).toHaveBeenCalledWith("/api/health/ready", expect.anything());
   });
 
-  it("reports integrations that are not built yet as planned, never as working", async () => {
+  it("reports the AI provider's real state and unbuilt integrations as planned", async () => {
     mockBackend(readiness());
     render(<SystemStatus />);
 
     await screen.findByText("Operational");
-    expect(within(row("AI provider · NVIDIA")).getByText("Planned · Stage 5")).toBeInTheDocument();
-    expect(within(row("AI provider · NVIDIA")).getByText("No API key configured yet")).toBeInTheDocument();
+    expect(within(row("AI provider · NVIDIA")).getByText("No API key")).toBeInTheDocument();
     expect(within(row("Company email")).getByText("Planned · Stage 9")).toBeInTheDocument();
+  });
+
+  it("shows a connected AI provider with its default model", async () => {
+    mockBackend(
+      readiness({
+        ai_provider: { status: "ok", detail: "Last connection test passed", critical: false, data: { key_present: true, default_model: "acme/model" } },
+      }),
+    );
+    render(<SystemStatus />);
+    expect(await within(await screen.findByText("AI provider · NVIDIA").then((el) => el.closest("li") as HTMLElement)).findByText("Connected · acme/model")).toBeInTheDocument();
   });
 
   it("shows a degraded state when migrations are pending", async () => {
