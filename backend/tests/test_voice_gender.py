@@ -77,39 +77,48 @@ def test_agents_use_their_grammatical_gender_and_only_english_or_arabic() -> Non
 
 
 class StubWhisper:
-    def __init__(self, probs: list[tuple[str, float]]) -> None:
+    """Whisper's own detection says `detected`, with these language probabilities."""
+
+    def __init__(self, detected: str, probs: list[tuple[str, float]]) -> None:
+        self.detected = detected
         self.probs = probs
         self.calls: list[dict[str, Any]] = []
 
-    def detect_language(self, audio: Any, **_: Any) -> tuple[str, float, list[tuple[str, float]]]:
-        best = max(self.probs, key=lambda p: p[1])
-        return best[0], best[1], self.probs
-
     def transcribe(self, audio: Any, **options: Any) -> tuple[list[Any], Any]:
         self.calls.append(options)
-        return [SimpleNamespace(text=" نص ")], SimpleNamespace(language=options["language"])
+        language = options["language"] or self.detected
+        info = SimpleNamespace(
+            language=language, all_language_probs=self.probs if not options["language"] else None
+        )
+        return [SimpleNamespace(text=" نص ")], info
 
 
 @pytest.mark.parametrize(
-    ("probs", "expected"),
+    ("detected", "probs", "expected", "passes"),
     [
-        # Short Arabic clips are often scored as Persian or Urdu: still Arabic.
-        ([("fa", 0.5), ("ar", 0.3), ("en", 0.2)], "ar"),
-        ([("en", 0.7), ("ar", 0.1), ("de", 0.2)], "en"),
+        # The usual case: Whisper itself hears Arabic or English — one pass.
+        ("ar", [("ar", 0.8), ("en", 0.1)], "ar", 1),
+        ("en", [("en", 0.9), ("ar", 0.05)], "en", 1),
+        # Short Arabic clips are sometimes scored as Persian: redone as Arabic.
+        ("fa", [("fa", 0.5), ("ar", 0.3), ("en", 0.2)], "ar", 2),
     ],
 )
 def test_speech_is_transcribed_as_english_or_arabic_never_translated(
-    probs: list[tuple[str, float]], expected: str
+    detected: str, probs: list[tuple[str, float]], expected: str, passes: int
 ) -> None:
     engine = WhisperEngine.__new__(WhisperEngine)
-    engine.model = StubWhisper(probs)  # type: ignore[assignment]
+    engine.model = StubWhisper(detected, probs)  # type: ignore[assignment]
     transcript = engine.transcribe(np.zeros(16_000, dtype=np.float32), None)
     assert transcript.language == expected
-    call = engine.model.calls[0]  # type: ignore[attr-defined]
-    assert call["language"] == expected and call["task"] == "transcribe"
-    # A language chosen in Settings is used as is.
+    calls = engine.model.calls  # type: ignore[attr-defined]
+    assert len(calls) == passes
+    assert all(c["task"] == "transcribe" for c in calls)
+    if passes == 2:
+        assert calls[1]["language"] == expected
+    # A language chosen in Settings is used as is, in one pass.
+    engine.model.calls.clear()  # type: ignore[attr-defined]
     engine.transcribe(np.zeros(16_000, dtype=np.float32), "ar")
-    assert engine.model.calls[1]["language"] == "ar"  # type: ignore[attr-defined]
+    assert [c["language"] for c in engine.model.calls] == ["ar"]  # type: ignore[attr-defined]
 
 
 async def test_employees_have_a_gender_the_owner_can_set(client: httpx.AsyncClient) -> None:

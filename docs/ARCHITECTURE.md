@@ -500,11 +500,19 @@ CEO (capped at 14 kB).
 - **English and Arabic only:** recognition picks English or Arabic (whichever Whisper
   scores higher) and always transcribes — never translates — what was said; agents are
   told to write only in English or Arabic, in the language the owner used.
-- **Voice sessions:** replies are read aloud; in hands-free mode the mic reopens after
-  each reply, stops after 1.5 s of silence, and the transcript is sent after a 3-second
-  countdown that editing the text cancels. Silence or an empty transcript pauses
-  listening, so the loop never runs on its own. Mute mic, mute voice (global setting)
-  and end are always available.
+- **Voice sessions feel face to face:** in hands-free mode the mic stops after 0.8 s of
+  silence and the transcript is sent at once (no countdown). Messages from a session ask
+  for a spoken reply (`reply_style=spoken`: one to four plain sentences — no tables,
+  lists, Markdown or code). The reply is spoken while it is still being written: each
+  finished sentence goes to `/api/voice/speak` (`clean`: Markdown stripped server-side)
+  and plays in order while the next is synthesised. The session shows the employee's
+  own 3D character close up (`world/portrait/TalkingHead.tsx`): the mouth follows the
+  loudness of the audio actually playing (envelope read from the WAV), eyes blink, the
+  head nods while talking, tilts while listening and looks up while thinking; without
+  WebGL, initials with a level bar. ⛶ shows the employee full screen while
+  talking (Talk / Stop speaking / Exit / End below; Esc exits). Silence or an empty transcript pauses listening, so
+  the loop never runs on its own. Mute mic, mute voice and end are always available.
+  Measured with the real model: a spoken reply starts arriving ~2.5 s after sending.
 - **Errors** are explained, never crashes: blocked permission, no device, device busy,
   insecure page, unsupported browser, model not installed, too short/long, unreadable
   audio. Text input always keeps working.

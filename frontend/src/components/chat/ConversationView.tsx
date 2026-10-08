@@ -256,6 +256,7 @@ export function ConversationView({
   const submitRef = useRef<() => Promise<void>>(async () => {});
   const voice = useChatVoice({
     conversationId: id,
+    employee: responder.employee,
     messages: list,
     text,
     setText,
@@ -296,13 +297,14 @@ export function ConversationView({
     try {
       const store = useChatStore.getState();
       if (id) {
-        await store.send({ conversationId: id }, text, all, spoken.inputMode);
+        await store.send({ conversationId: id }, text, all, spoken.inputMode, spoken.replyStyle);
       } else {
         const created = await store.send(
           { target: target.kind === "employee" ? { kind: "employee", employee_id: target.employee_id! } : { kind: "department", department: target.department! } },
           text,
           all,
           spoken.inputMode,
+          spoken.replyStyle,
         );
         onCreated(created);
       }

@@ -12,7 +12,7 @@ import os
 import wave
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Protocol
+from typing import Any, Protocol
 
 import numpy as np
 
@@ -74,25 +74,8 @@ class WhisperEngine:
         threads = max(1, min(4, os.cpu_count() or 1))
         self.model = WhisperModel(str(path), device="cpu", compute_type="int8", cpu_threads=threads)
 
-    def detect(self, audio: np.ndarray) -> tuple[str, float]:
-        """English or Arabic, whichever Whisper finds more likely. NEXUS only speaks these
-        two, and letting Whisper pick from ~99 languages makes short Arabic clips come out
-        in another language or script."""
-        try:
-            _, _, probs = self.model.detect_language(audio, vad_filter=True)
-        except (ValueError, RuntimeError):  # no speech left after VAD
-            _, _, probs = self.model.detect_language(audio)
-        scores = dict(probs)
-        en, ar = float(scores.get("en", 0.0)), float(scores.get("ar", 0.0))
-        language = "ar" if ar > en else "en"
-        total = en + ar
-        return language, (max(en, ar) / total) if total else 0.0
-
-    def transcribe(self, audio: np.ndarray, language: str | None) -> Transcript:
-        probability = 1.0
-        if language not in SUPPORTED_LANGUAGES:
-            language, probability = self.detect(audio)
-        segments, _ = self.model.transcribe(
+    def _run(self, audio: np.ndarray, language: str | None) -> tuple[Any, Any]:
+        return self.model.transcribe(
             audio,
             language=language,
             task="transcribe",  # write down what was said, in that language — never translate
@@ -100,6 +83,26 @@ class WhisperEngine:
             vad_filter=True,  # skips silence, which also prevents invented text
             condition_on_previous_text=False,
         )
+
+    def transcribe(self, audio: np.ndarray, language: str | None) -> Transcript:
+        """English or Arabic only. NEXUS speaks just these two; letting Whisper pick any of
+        ~99 languages makes short Arabic clips come out in another language or script.
+        One pass when Whisper's own detection says English or Arabic (the usual case);
+        otherwise the likelier of the two is forced and the audio transcribed again."""
+        if language in SUPPORTED_LANGUAGES:
+            segments, _ = self._run(audio, language)
+            probability = 1.0
+        else:
+            segments, info = self._run(audio, None)
+            scores = dict(info.all_language_probs or [])
+            en, ar = float(scores.get("en", 0.0)), float(scores.get("ar", 0.0))
+            total = en + ar
+            probability = max(en, ar) / total if total else 0.0
+            if info.language in SUPPORTED_LANGUAGES:
+                language = info.language
+            else:
+                language = "ar" if ar > en else "en"
+                segments, _ = self._run(audio, language)
         text = " ".join(s.text.strip() for s in segments).strip()
         return Transcript(
             text=text,

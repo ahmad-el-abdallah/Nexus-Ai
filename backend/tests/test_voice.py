@@ -372,3 +372,51 @@ async def test_real_round_trip_english_and_arabic(make_settings: Any) -> None:
         said, heard = (re.sub(r"[^\w\s]", "", t).lower().split() for t in (text, transcript.text))
         ratio = difflib.SequenceMatcher(None, said, heard).ratio()
         assert ratio >= 0.85, (ratio, transcript.text)
+
+
+# ------------------------------------------------- face-to-face voice sessions
+
+
+async def test_spoken_replies_are_short_and_plain(
+    voice_client: httpx.AsyncClient, fake: FakeProvider
+) -> None:
+    await ready_catalog(voice_client)
+    roster = (await voice_client.get("/api/employees")).json()
+    employee = next(e for e in roster if e["name"] == "Priya Nair")
+    cid = (
+        await voice_client.post(
+            "/api/conversations", json={"kind": "employee", "employee_id": employee["id"]}
+        )
+    ).json()["id"]
+    r = await voice_client.post(
+        f"/api/conversations/{cid}/messages",
+        data={"content": "How is the team doing?", "reply_style": "spoken"},
+    )
+    assert r.status_code in (200, 201), r.text
+    for _ in range(200):
+        if cid not in voice_client.app.state.chat.replies:  # type: ignore[attr-defined]
+            break
+        await asyncio.sleep(0.02)
+    system = json.loads(fake.calls[-1].content)["messages"][0]["content"]
+    assert "face to face in a live voice conversation" in system
+    assert "no tables, lists, bullet points" in system
+    # A typed message keeps the normal style.
+    await voice_client.post(f"/api/conversations/{cid}/messages", data={"content": "Thanks"})
+    for _ in range(200):
+        if cid not in voice_client.app.state.chat.replies:  # type: ignore[attr-defined]
+            break
+        await asyncio.sleep(0.02)
+    system = json.loads(fake.calls[-1].content)["messages"][0]["content"]
+    assert "face to face" not in system
+
+
+async def test_streamed_sentences_are_cleaned_before_speaking(
+    voice_client: httpx.AsyncClient,
+) -> None:
+    r = await voice_client.post(
+        "/api/voice/speak",
+        json={"text": "**Sales** is up. See [report](https://x.example.com)", "clean": True},
+    )
+    assert r.status_code == 200 and r.headers["content-type"] == "audio/wav"
+    nothing = await voice_client.post("/api/voice/speak", json={"text": "|---|---|", "clean": True})
+    assert nothing.status_code == 204

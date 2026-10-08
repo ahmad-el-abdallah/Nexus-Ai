@@ -64,12 +64,16 @@ export function transcribe(audio: Blob, language?: VoiceLanguage) {
   return request<Transcript>("/api/voice/transcribe", { method: "POST", body: form });
 }
 
-/** Text → WAV, synthesised locally in the employee's voice. */
-export async function speak(text: string, opts: { language?: "en" | "ar"; employeeId?: string | null } = {}, signal?: AbortSignal): Promise<Blob> {
+/**
+ * Text → WAV, synthesised locally in the employee's voice. `clean`: the text is a
+ * piece of a streaming reply (Markdown removed server-side); null when there is
+ * nothing worth saying in it.
+ */
+export async function speak(text: string, opts: { language?: "en" | "ar"; employeeId?: string | null; clean?: boolean } = {}, signal?: AbortSignal): Promise<Blob | null> {
   const response = await fetch("/api/voice/speak", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ text, language: opts.language, employee_id: opts.employeeId ?? undefined }),
+    body: JSON.stringify({ text, language: opts.language, employee_id: opts.employeeId ?? undefined, clean: opts.clean || undefined }),
     signal,
   });
   if (!response.ok) {
@@ -82,6 +86,7 @@ export async function speak(text: string, opts: { language?: "en" | "ar"; employ
     }
     throw new ApiError(message, response.status);
   }
+  if (response.status === 204) return null;
   return response.blob();
 }
 

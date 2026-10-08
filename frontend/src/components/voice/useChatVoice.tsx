@@ -1,9 +1,15 @@
 "use client";
 
+import dynamic from "next/dynamic";
 import Link from "next/link";
 import { type ReactNode, useCallback, useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 
 import type { Message } from "@/lib/chat";
+import type { Employee } from "@/lib/employees";
+import { detectWebGL } from "@/lib/webgl";
+import type { FaceMode } from "@/world/portrait/TalkingHead";
+import { useEmployeeStore } from "@/world/state/employeeStore";
 import { speechPlayer, type SpeechState } from "@/lib/speech";
 import { installed, type Transcript } from "@/lib/voice";
 import { useVoiceStore } from "@/world/state/voiceStore";
@@ -16,8 +22,62 @@ export interface VoiceDraft {
   transcript: Transcript;
 }
 
-const AUTO_SEND_SECONDS = 3;
-const HANDS_FREE = { silenceMs: 1_500, noSpeechMs: 10_000 };
+// Face to face: send as soon as the owner stops talking (0.8 s of silence).
+const HANDS_FREE = { silenceMs: 800, noSpeechMs: 10_000 };
+
+const TalkingHead = dynamic(() => import("@/world/portrait/TalkingHead"), { ssr: false });
+
+/** The employee's face during a voice session: 3D when available, initials otherwise. */
+function Face({ employee, mode, big = false, onExpand }: { employee: Employee | null; mode: FaceMode; big?: boolean; onExpand?: () => void }) {
+  const [webgl] = useState(() => typeof document !== "undefined" && detectWebGL().webgl2);
+  const [level, setLevel] = useState(0);
+  useEffect(() => {
+    if (webgl || mode !== "speaking") return;
+    let frame = 0;
+    const tick = () => {
+      setLevel(speechPlayer.level());
+      frame = requestAnimationFrame(tick);
+    };
+    frame = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(frame);
+  }, [webgl, mode]);
+  const label = { speaking: "Speaking", listening: "Listening", thinking: "Thinking", idle: "" }[mode];
+  return (
+    <div
+      className={`relative shrink-0 overflow-hidden bg-gradient-to-b from-nx-indigo/25 to-nx-bg ${big ? "h-full w-full" : "h-44 w-40 rounded-xl ring-1 ring-nx-cyan/30"}`}
+      data-testid={big ? "voice-face-full" : "voice-face"}
+      data-mode={mode}
+    >
+      {employee && webgl ? (
+        <TalkingHead employee={employee} mode={mode} level={() => speechPlayer.level()} wide={big} />
+      ) : (
+        <div className="flex h-full flex-col items-center justify-center gap-2">
+          <span className="flex size-16 items-center justify-center rounded-full bg-nx-violet/30 text-lg font-semibold text-white ring-2 ring-nx-cyan/40">
+            {(employee?.name ?? "?").split(/\s+/).map((p) => p[0]).slice(0, 2).join("")}
+          </span>
+          <span className="h-1.5 rounded-full bg-nx-cyan transition-[width] duration-75" style={{ width: `${8 + level * 40}px` }} aria-hidden />
+        </div>
+      )}
+      {!big && (
+        <span className="absolute inset-x-0 bottom-0 truncate bg-nx-bg/70 px-2 py-1 text-center text-[11px] text-nx-text">
+          {employee?.name ?? "Employee"}
+          {label && <span className="text-nx-cyan"> · {label}</span>}
+        </span>
+      )}
+      {onExpand && (
+        <button
+          type="button"
+          onClick={onExpand}
+          aria-label="Full screen"
+          title="See the employee full screen"
+          className="absolute top-1.5 right-1.5 rounded-md bg-nx-bg/70 px-1.5 py-0.5 text-sm text-nx-text ring-1 ring-white/10 hover:bg-nx-bg"
+        >
+          ⛶
+        </button>
+      )}
+    </div>
+  );
+}
 
 export function useSpeechState(): SpeechState {
   const [state, setState] = useState(speechPlayer.state);
@@ -36,6 +96,7 @@ export function useSpeechState(): SpeechState {
  */
 export function useChatVoice({
   conversationId,
+  employee,
   messages,
   text,
   setText,
@@ -43,6 +104,8 @@ export function useChatVoice({
   canSend,
 }: {
   conversationId: string | null;
+  /** Who answers in this conversation (shown talking in a voice session). */
+  employee?: Employee | null;
   messages: Message[];
   text: string;
   setText: (text: string) => void;
@@ -56,9 +119,16 @@ export function useChatVoice({
   const [session, setSession] = useState(false);
   const [handsFree, setHandsFree] = useState(true);
   const [micPaused, setMicPaused] = useState(false);
-  // Hands-free auto-send: the transcript it applies to and seconds left.
-  const [auto, setAuto] = useState<{ text: string; left: number } | null>(null);
+  // Hands-free: the transcript to send as soon as it is in the composer.
+  const [auto, setAuto] = useState<{ text: string } | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [fullscreen, setFullscreen] = useState(false);
+  useEffect(() => {
+    if (!fullscreen) return;
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && setFullscreen(false);
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [fullscreen]);
   const speech = useSpeechState();
   const submitRef = useRef(submit);
   useEffect(() => {
@@ -71,7 +141,7 @@ export function useChatVoice({
       setDraft({ transcript, file: new File([recording.blob], `voice-message.${extension}`, { type: recording.blob.type || "audio/webm" }) });
       setText(transcript.text);
       setNotice(null);
-      if (session && handsFree) setAuto({ text: transcript.text, left: AUTO_SEND_SECONDS });
+      if (session && handsFree && transcript.text.trim()) setAuto({ text: transcript.text });
     },
     [session, handsFree, setText],
   );
@@ -84,20 +154,16 @@ export function useChatVoice({
   });
   const elapsed = useElapsed(voice.startedAt);
 
-  // Auto-send countdown (hands-free); typing or editing the transcript cancels it.
+  // Hands-free: send right away, like talking to someone (no countdown).
   const counting = auto !== null && text === auto.text;
   useEffect(() => {
-    if (!counting || !auto) return;
+    if (!counting) return;
     const timer = setTimeout(() => {
-      if (auto.left <= 1) {
-        setAuto(null);
-        submitRef.current();
-      } else {
-        setAuto({ ...auto, left: auto.left - 1 });
-      }
-    }, 1000);
+      setAuto(null);
+      submitRef.current();
+    }, 0);
     return () => clearTimeout(timer);
-  }, [counting, auto]);
+  }, [counting]);
 
   // Current values for callbacks that run after speech finishes.
   const live = useRef({ session, handsFree, micPaused, canSend, start: voice.start, phase: voice.phase });
@@ -109,16 +175,27 @@ export function useChatVoice({
     if (l.session && l.handsFree && !l.micPaused && l.canSend && l.phase === "idle") void l.start();
   }, []);
 
-  // Read replies aloud when they finish while this conversation is open.
+  // Read replies aloud while they are being written (sentence by sentence), so the
+  // employee starts talking almost at once — only replies seen streaming here.
   const seen = useRef(new Map<number, string>());
   useEffect(() => {
+    const wanted = (session || settings?.speak_replies) && !muted && installed(overview, "tts");
     for (const m of messages) {
       const before = seen.current.get(m.id);
       seen.current.set(m.id, m.status);
-      if (m.role !== "agent" || before !== "streaming" || m.status !== "complete") continue;
-      const wanted = session || settings?.speak_replies;
-      const play = wanted && !muted && installed(overview, "tts");
-      void (play ? speechPlayer.play(m.id) : Promise.resolve()).then(listenAgain);
+      if (m.role !== "agent") continue;
+      if (m.status === "streaming") {
+        if (wanted && m.content) speechPlayer.feed(m.id, m.employee_id, m.content, false);
+        continue;
+      }
+      if (before !== "streaming") continue; // not a reply that just finished here
+      if (wanted && m.status === "complete") {
+        speechPlayer.feed(m.id, m.employee_id, m.content, true);
+        void speechPlayer.whenDone(m.id).then(listenAgain);
+      } else {
+        if (speechPlayer.state.messageId === m.id) speechPlayer.stop();
+        listenAgain();
+      }
     }
   }, [messages, session, settings?.speak_replies, muted, overview, listenAgain]);
 
@@ -130,9 +207,12 @@ export function useChatVoice({
     [conversationId],
   );
 
-  /** Files and mode for the message being sent (the draft is kept until it succeeds). */
-  const voicePayload = (): { files: File[]; inputMode: "text" | "voice" } =>
-    draft ? { files: [draft.file], inputMode: "voice" } : { files: [], inputMode: "text" };
+  /** Files and mode for the message being sent (the draft is kept until it succeeds).
+   * In a voice session the reply is spoken, so it is asked for short and plain. */
+  const voicePayload = (): { files: File[]; inputMode: "text" | "voice"; replyStyle: "text" | "spoken" } => ({
+    ...(draft ? { files: [draft.file], inputMode: "voice" as const } : { files: [], inputMode: "text" as const }),
+    replyStyle: session ? "spoken" : "text",
+  });
   const clearDraft = () => {
     setAuto(null);
     setDraft(null);
@@ -171,6 +251,7 @@ export function useChatVoice({
     speechPlayer.stop();
     setAuto(null);
     setSession(false);
+    setFullscreen(false);
     setNotice(null);
   };
 
@@ -195,7 +276,7 @@ export function useChatVoice({
         : voice.phase === "starting"
           ? "Opening the microphone…"
           : counting
-            ? `Sending in ${auto?.left}… (edit the text to cancel)`
+            ? "Sending…"
             : speech.status === "loading"
               ? "Preparing the spoken reply…"
               : speech.status === "speaking"
@@ -204,14 +285,72 @@ export function useChatVoice({
                   ? "Microphone muted"
                   : "Ready";
 
+  const replying = messages.some((m) => m.status === "streaming");
+  const faceMode: FaceMode =
+    speech.status === "speaking"
+      ? "speaking"
+      : voice.phase === "recording"
+        ? "listening"
+        : voice.phase === "transcribing" || counting || replying || speech.status === "loading"
+          ? "thinking"
+          : "idle";
+  const speaker = useEmployeeStore((s) => s.employees.find((e) => e.id === speech.employeeId)) ?? null;
+  const lastAgent = [...messages].reverse().find((m) => m.role === "agent" && m.employee_id);
+  const lastSpeaker = useEmployeeStore((s) => s.employees.find((e) => e.id === lastAgent?.employee_id)) ?? null;
+  const face = speaker ?? employee ?? lastSpeaker;
+
   const sessionBar: ReactNode = session && (
-    <div className="mb-2 flex flex-wrap items-center gap-2 rounded-xl bg-nx-cyan/[0.06] px-3 py-2 text-xs ring-1 ring-nx-cyan/30" role="region" aria-label="Voice session" data-testid="voice-session">
-      <span className="font-semibold text-nx-cyan">Voice session</span>
-      <span className="text-nx-muted" role="status" aria-live="polite">
-        {phaseText}
-      </span>
-      {voice.phase === "recording" && <MicLevel level={voice.level} />}
-      <span className="ml-auto flex flex-wrap gap-1.5">
+    <div className="mb-2 flex items-center gap-3 rounded-xl bg-nx-cyan/[0.06] px-3 py-2 text-xs ring-1 ring-nx-cyan/30" role="region" aria-label="Voice session" data-testid="voice-session">
+      {fullscreen ? (
+        <div className="flex h-44 w-40 shrink-0 items-center justify-center rounded-xl text-center text-nx-faint ring-1 ring-nx-line">Shown full screen</div>
+      ) : (
+        <Face employee={face} mode={faceMode} onExpand={() => setFullscreen(true)} />
+      )}
+      {fullscreen &&
+        createPortal(
+        <div className="fixed inset-0 z-50 flex flex-col bg-nx-bg" role="dialog" aria-modal="true" aria-label={`Talking with ${face?.name ?? "the employee"}`}>
+          <div className="min-h-0 flex-1">
+            <Face employee={face} mode={faceMode} big />
+          </div>
+          <div className="flex flex-wrap items-center justify-center gap-3 border-t border-nx-line bg-nx-bg/90 px-4 py-3 text-sm">
+            <span className="font-semibold text-nx-text">{face?.name ?? "Employee"}</span>
+            <span className="text-nx-cyan" role="status" aria-live="polite">
+              {phaseText}
+            </span>
+            {voice.phase === "recording" && <MicLevel level={voice.level} />}
+            {voice.phase === "recording" ? (
+              <button type="button" onClick={() => void voice.stop()} className="rounded-lg px-3 py-1.5 text-nx-text ring-1 ring-nx-line-strong hover:bg-white/5">
+                Done talking
+              </button>
+            ) : (
+              <button type="button" disabled={!canSend || voice.phase !== "idle" || micPaused} onClick={() => (sttReady ? startTalking() : setNotice("not_installed"))} className="rounded-lg px-3 py-1.5 text-nx-text ring-1 ring-nx-line-strong hover:bg-white/5 disabled:opacity-40">
+                Talk
+              </button>
+            )}
+            {speech.status !== "idle" && (
+              <button type="button" onClick={() => speechPlayer.stop()} className="rounded-lg px-3 py-1.5 text-nx-text ring-1 ring-nx-line-strong hover:bg-white/5">
+                Stop speaking
+              </button>
+            )}
+            <button type="button" onClick={() => setFullscreen(false)} className="rounded-lg px-3 py-1.5 text-nx-text ring-1 ring-nx-line-strong hover:bg-white/5">
+              Exit full screen
+            </button>
+            <button type="button" onClick={endSession} className="rounded-lg px-3 py-1.5 text-nx-warn ring-1 ring-nx-warn/50 hover:bg-nx-warn/10">
+              End
+            </button>
+          </div>
+        </div>,
+          document.body,
+        )}
+      <div className="flex min-w-0 flex-1 flex-col gap-3">
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="font-semibold text-nx-cyan">Voice session</span>
+          <span className="text-nx-muted" role="status" aria-live="polite">
+            {phaseText}
+          </span>
+          {voice.phase === "recording" && <MicLevel level={voice.level} />}
+        </div>
+        <span className="flex flex-wrap gap-1.5">
         {voice.phase === "recording" ? (
           <button type="button" onClick={() => void voice.stop()} className="rounded-lg px-2.5 py-1 text-nx-text ring-1 ring-nx-line-strong hover:bg-white/5">
             Done talking
@@ -219,11 +358,6 @@ export function useChatVoice({
         ) : (
           <button type="button" disabled={!canSend || voice.phase !== "idle" || micPaused} onClick={() => (sttReady ? startTalking() : setNotice("not_installed"))} className="rounded-lg px-2.5 py-1 text-nx-text ring-1 ring-nx-line-strong hover:bg-white/5 disabled:opacity-40">
             Talk
-          </button>
-        )}
-        {counting && (
-          <button type="button" onClick={() => setAuto(null)} className="rounded-lg px-2.5 py-1 text-nx-text ring-1 ring-nx-line-strong hover:bg-white/5">
-            Review first
           </button>
         )}
         {speech.status !== "idle" && (
@@ -260,7 +394,8 @@ export function useChatVoice({
         <button type="button" onClick={endSession} className="rounded-lg px-2.5 py-1 text-nx-warn ring-1 ring-nx-warn/50 hover:bg-nx-warn/10">
           End
         </button>
-      </span>
+        </span>
+      </div>
     </div>
   );
 

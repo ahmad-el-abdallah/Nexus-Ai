@@ -61,6 +61,17 @@ FLUSH_SECONDS = 3.0
 SENIORITY_RANK = {level: rank for rank, level in enumerate(SENIORITY_LEVELS)}
 
 
+# A live voice session: the reply is read aloud as it is written.
+SPOKEN_STYLE = (
+    "The owner is talking with you face to face in a live voice conversation, and your "
+    "reply is read aloud as you write it. Answer like a person speaking: short (one to "
+    "four sentences unless the owner asks for more), natural and direct, starting with "
+    "the answer itself. Use plain spoken sentences only: no tables, lists, bullet points, "
+    "headings, Markdown, emojis, code or links. If something really needs a table or a "
+    "long document, say so in one sentence and offer to write it in the chat."
+)
+
+
 class ChatError(Exception):
     def __init__(self, message: str, status: int = 409) -> None:
         super().__init__(message)
@@ -299,7 +310,9 @@ class ChatService:
     async def publish_message(self, session: AsyncSession, message: Message, kind: str) -> None:
         self.events.publish(kind, dump(await self.message_out(session, message)))
 
-    async def start_reply(self, session: AsyncSession, conversation: Conversation) -> Message:
+    async def start_reply(
+        self, session: AsyncSession, conversation: Conversation, *, spoken: bool = False
+    ) -> Message:
         """Routes the conversation and starts streaming a reply in the background.
 
         Refusals by the gateway (no key, paused, budget, no model) are stored as
@@ -310,6 +323,8 @@ class ChatService:
         if conversation.kind == ConversationKind.EMPLOYEE:
             conversation.department = responder.department
         history, context, context_count = await self._context(session, conversation, responder)
+        if spoken:
+            context += "\n" + SPOKEN_STYLE
         message = Message(
             conversation_id=conversation.id,
             role=MessageRole.AGENT.value,

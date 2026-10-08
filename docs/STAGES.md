@@ -293,3 +293,9 @@ workflows and the email queue). Verified with the real model: the Sales director
 his five team members and their current work; the CEO answered in Arabic with all 20
 departments, Marketing's headcount and Finance's director.
 
+### Follow-up (owner request): face-to-face voice sessions
+
+No 3-second countdown (sent as soon as the owner stops talking, 0.8 s of silence),
+replies spoken sentence by sentence while they are written, short spoken-style answers
+without tables or lists, a single-pass English/Arabic transcription, and the employee's
+3D face on screen with the mouth moving to the voice, blinking and nodding. A ⛶ button shows the employee full screen.

@@ -171,6 +171,7 @@ function VoiceTest({ models }: { models: VoiceModel[] }) {
           : `Hello, I'm ${who?.name ?? "an employee"}${who ? `, ${who.role}` : ""}. How can I help you today?`;
       const started = performance.now();
       const blob = await speak(text, { language, employeeId: who?.id });
+      if (!blob) return;
       const audio = new Audio(URL.createObjectURL(blob));
       await audio.play();
       setStatus(`Synthesised in ${Math.round(performance.now() - started)} ms on this computer.`);

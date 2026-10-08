@@ -198,6 +198,8 @@ class SpeakIn(BaseModel):
     text: str = Field(min_length=1, max_length=MAX_SPEAK_CHARS)
     language: Literal["en", "ar"] | None = None
     employee_id: str | None = None
+    # A piece of a streaming reply: strip Markdown, links and code before speaking.
+    clean: bool = False
 
 
 @router.post("/speak")
@@ -209,11 +211,12 @@ async def speak(body: SpeakIn, session: Session, voice: Voice) -> Response:
         employee = await session.get(Employee, body.employee_id)
         if employee:
             speaker, gender = employee.avatar_seed, employee.gender
-    language = body.language or language_of(body.text)
+    text = speakable(body.text) if body.clean else body.text
+    if not text.strip(" .\n"):
+        return Response(status_code=204)  # nothing worth saying (e.g. only a table rule)
+    language = body.language or language_of(text)
     try:
-        audio, model = await voice.synthesize(
-            body.text, language, speaker, prefs.speech_rate, gender
-        )
+        audio, model = await voice.synthesize(text, language, speaker, prefs.speech_rate, gender)
     except VoiceError as error:
         raise _error(error) from error
     except Exception as error:

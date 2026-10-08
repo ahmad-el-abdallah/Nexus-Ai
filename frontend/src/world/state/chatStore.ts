@@ -36,7 +36,7 @@ export interface ChatState {
   /** Makes sure one conversation is in the list (e.g. opened by link); false if it doesn't exist. */
   ensureConversation: (conversationId: string) => Promise<boolean>;
   /** Sends to an existing conversation, or starts one for `target`. Returns the conversation id. */
-  send: (to: { conversationId: string } | { target: Target }, text: string, files?: File[], inputMode?: "text" | "voice") => Promise<string>;
+  send: (to: { conversationId: string } | { target: Target }, text: string, files?: File[], inputMode?: "text" | "voice", replyStyle?: "text" | "spoken") => Promise<string>;
   stop: (conversationId: string) => Promise<void>;
   retry: (conversationId: string) => Promise<void>;
   rename: (conversationId: string, title: string) => Promise<void>;
@@ -126,7 +126,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
     }
   },
 
-  send: async (to, text, files = [], inputMode = "text") => {
+  send: async (to, text, files = [], inputMode = "text", replyStyle = "text") => {
     let conversationId: string;
     if ("target" in to) {
       const conversation = await createConversation(to.target);
@@ -139,7 +139,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
     } else {
       conversationId = to.conversationId;
     }
-    const { message, reply } = await sendMessage(conversationId, text, files, inputMode);
+    const { message, reply } = await sendMessage(conversationId, text, files, inputMode, replyStyle);
     get().applyMessage(message);
     if (reply) get().applyMessage(reply);
     return conversationId;

@@ -301,10 +301,13 @@ async def send_message(
     content: Annotated[str, Form(max_length=MAX_MESSAGE_CHARS)] = "",
     files: Annotated[list[UploadFile] | None, File()] = None,
     input_mode: Annotated[Literal["text", "voice"], Form()] = "text",
+    reply_style: Annotated[Literal["text", "spoken"], Form()] = "text",
 ) -> SendResult:
     """Stores the owner's message (multipart: `content` + optional `files`;
     `input_mode=voice` when `content` is a reviewed transcript, usually with the
-    recording attached) and starts the reply. The reply streams over /api/events."""
+    recording attached) and starts the reply. The reply streams over /api/events.
+    `reply_style=spoken` (a live voice session): a short, conversational reply
+    without tables or lists, since it is read aloud as it streams."""
     conversation = await _conversation(session, conversation_id)
     uploads = files or []
     text = content.strip()
@@ -369,7 +372,7 @@ async def send_message(
     owner = await chat.message_out(session, message)
     chat.events.publish("message.created", dump(owner))
     try:
-        reply = await chat.start_reply(session, conversation)
+        reply = await chat.start_reply(session, conversation, spoken=reply_style == "spoken")
     except ChatError as error:
         # The routing changed between the check and now (e.g. a suspension).
         log.warning("chat.reply_not_started", conversation_id=conversation.id, reason=str(error))

@@ -139,10 +139,12 @@ export const fetchMessages = (id: string) => request<Message[]>(`/api/conversati
 export const stopReply = (id: string) => request<{ stopped: boolean }>(`/api/conversations/${id}/stop`, { method: "POST" });
 export const retryReply = (id: string) => request<Message>(`/api/conversations/${id}/reply`, { method: "POST" });
 
-export function sendMessage(id: string, content: string, files: File[] = [], inputMode: "text" | "voice" = "text") {
+/** `replyStyle: "spoken"` in a live voice session: a short reply without tables or lists. */
+export function sendMessage(id: string, content: string, files: File[] = [], inputMode: "text" | "voice" = "text", replyStyle: "text" | "spoken" = "text") {
   const form = new FormData();
   form.append("content", content);
   form.append("input_mode", inputMode);
+  if (replyStyle === "spoken") form.append("reply_style", "spoken");
   for (const file of files) form.append("files", file, file.name);
   return request<{ message: Message; reply: Message | null }>(`/api/conversations/${id}/messages`, { method: "POST", body: form });
 }

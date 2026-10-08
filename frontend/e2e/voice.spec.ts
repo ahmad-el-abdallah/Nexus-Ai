@@ -62,35 +62,43 @@ test.describe("Voice communication", () => {
     expect((await speak).headers()["content-type"]).toBe("audio/wav");
   });
 
-  test("a hands-free voice session reads the reply aloud, listens again and sends after a countdown", async ({ page }) => {
+  test("a hands-free voice session talks face to face: sends at once, speaks while replying, listens again", async ({ page }) => {
     await page.goto("/chat?to=department:marketing");
     await page.getByRole("button", { name: "Start voice session" }).click();
     const session = page.getByTestId("voice-session");
     await expect(session).toContainText("Ready");
+    // The employee's face is part of the session.
+    const face = session.getByTestId("voice-face");
+    await expect(face).toBeVisible();
+    await expect(face).toContainText("Elena Rossi");
 
     await session.getByRole("button", { name: "Talk" }).click();
     await expect(session).toContainText("Listening…");
+    await expect(face).toHaveAttribute("data-mode", "listening");
     await page.waitForTimeout(1200);
+    // No countdown: the transcript is sent as soon as it is ready.
+    const speak = page.waitForRequest((r) => r.url().endsWith("/api/voice/speak"));
     await session.getByRole("button", { name: "Done talking" }).click();
-    await expect(session).toContainText(/Sending in \d/);
-    // The countdown sends it without another click.
     const owner = page.locator('[data-testid="message"][data-role="owner"]').last();
     await expect(owner).toContainText(TRANSCRIPT, { timeout: 8_000 });
 
-    // The reply is spoken, then the session listens again by itself.
-    const speak = page.waitForResponse((r) => r.url().endsWith("/api/voice/speak"));
+    // The reply is spoken sentence by sentence, then the session listens again by itself.
+    expect(JSON.parse((await speak).postData() ?? "{}")).toMatchObject({ clean: true });
     await expect(page.locator('[data-testid="message"][data-role="agent"]').last()).toContainText(REPLY);
-    expect((await speak).status()).toBe(200);
     await expect(session).toContainText("Listening…", { timeout: 10_000 });
 
-    // Editing the transcript cancels the automatic send.
+    // The employee can be seen full screen while talking; Esc returns.
+    await face.getByRole("button", { name: "Full screen" }).click();
+    const full = page.getByRole("dialog", { name: "Talking with Elena Rossi" });
+    await expect(full.getByTestId("voice-face-full")).toBeVisible();
+    await expect(full.getByRole("button", { name: "Exit full screen" })).toBeVisible();
+    await page.keyboard.press("Escape");
+    await expect(full).toHaveCount(0);
+
+    // The next sentence goes straight out too.
     await page.waitForTimeout(1000);
     await session.getByRole("button", { name: "Done talking" }).click();
-    await expect(session).toContainText(/Sending in \d/);
-    await page.getByRole("textbox", { name: "Message" }).fill("Actually, wait.");
-    await expect(session).not.toContainText("Sending in");
-    await page.waitForTimeout(3500);
-    await expect(page.locator('[data-testid="message"][data-role="owner"]')).toHaveCount(1);
+    await expect(page.locator('[data-testid="message"][data-role="owner"]')).toHaveCount(2, { timeout: 8_000 });
 
     await session.getByRole("button", { name: "Mute mic" }).click();
     await expect(session).toContainText("Microphone muted");
