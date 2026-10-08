@@ -1,6 +1,6 @@
 "use client";
 
-import { Environment, Html, Lightformer, OrbitControls } from "@react-three/drei";
+import { Environment, Lightformer, OrbitControls } from "@react-three/drei";
 import { Canvas, useFrame } from "@react-three/fiber";
 import { useMemo, useRef } from "react";
 import { Color, type Group, type Mesh, MeshLambertMaterial, NeutralToneMapping, Vector3 } from "three";
@@ -11,6 +11,7 @@ import { activityPose, jointMatrices, walkPose } from "../characters/rig";
 import type { Activity } from "../characters/status";
 import { furnitureGeometry } from "../geometry/furniture";
 import { finishMaterials, FINISHES } from "../materials";
+import { ScreenAnchors, ScreenLabel } from "../scene/screenAnchors";
 
 export interface StudioSlot {
   label: string;
@@ -87,44 +88,50 @@ function Person({ slot, x, z }: { slot: StudioSlot; x: number; z: number }) {
 export default function StudioCanvas({ slots }: { slots: StudioSlot[] }) {
   const cols = Math.min(5, slots.length);
   return (
-    <Canvas
-      shadows="percentage"
-      camera={{ position: [(cols - 1) * SPACING * 0.5 + 5, 8.5, -11], fov: 38 }}
-      gl={{ toneMapping: NeutralToneMapping }}
-      dpr={[1, 1.5]}
-    >
-      <hemisphereLight args={["#c9d4ff", "#1a2044", 1.1]} />
-      <directionalLight position={[-6, 10, -8]} intensity={2.6} castShadow shadow-mapSize={[1024, 1024]} />
-      <Environment resolution={64} frames={1}>
-        <Lightformer form="rect" intensity={1.5} position={[0, 8, 0]} rotation-x={Math.PI / 2} scale={[20, 20, 1]} />
-      </Environment>
-      <mesh rotation-x={-Math.PI / 2} receiveShadow position={[(cols - 1) * SPACING * 0.5, 0, SPACING * 0.5]}>
-        <planeGeometry args={[cols * SPACING + 2, Math.ceil(slots.length / cols) * SPACING + 2]} />
-        <meshStandardMaterial color="#3b4573" roughness={0.9} />
-      </mesh>
-      {slots.map((slot, i) => {
-        const x = (i % cols) * SPACING;
-        const z = Math.floor(i / cols) * SPACING;
-        return (
-          // Keyed by position so labels stay mounted when people are regenerated.
-          <group key={i}>
-            {slot.seated && (
-              <>
-                {/* Desk in front (toward -z); the chair faces it. */}
-                <Prop type="desk" position={[x, 0, z - 0.78]} rotation={0} />
-                <Prop type="chair" position={[x, 0, z]} rotation={Math.PI} />
-              </>
-            )}
-            <Person slot={slot} x={x} z={z} />
-            <Html position={[x, slot.activity === "celebrate" ? 2.45 : 2.05, z]} center style={{ pointerEvents: "none" }}>
-              <span className="rounded-full bg-nx-bg/80 px-2.5 py-1 text-[11px] font-medium whitespace-nowrap text-nx-text ring-1 ring-white/10">
-                {slot.label}
-              </span>
-            </Html>
-          </group>
-        );
-      })}
-      <OrbitControls target={[(cols - 1) * SPACING * 0.5, 0.5, SPACING * 0.3]} enableDamping maxPolarAngle={1.35} />
-    </Canvas>
+    <div className="relative h-full w-full">
+      <Canvas
+        shadows="percentage"
+        camera={{ position: [(cols - 1) * SPACING * 0.5 + 5, 8.5, -11], fov: 38 }}
+        gl={{ toneMapping: NeutralToneMapping }}
+        dpr={[1, 1.5]}
+      >
+        <hemisphereLight args={["#c9d4ff", "#1a2044", 1.1]} />
+        <directionalLight position={[-6, 10, -8]} intensity={2.6} castShadow shadow-mapSize={[1024, 1024]} />
+        <Environment resolution={64} frames={1}>
+          <Lightformer form="rect" intensity={1.5} position={[0, 8, 0]} rotation-x={Math.PI / 2} scale={[20, 20, 1]} />
+        </Environment>
+        <mesh rotation-x={-Math.PI / 2} receiveShadow position={[(cols - 1) * SPACING * 0.5, 0, SPACING * 0.5]}>
+          <planeGeometry args={[cols * SPACING + 2, Math.ceil(slots.length / cols) * SPACING + 2]} />
+          <meshStandardMaterial color="#3b4573" roughness={0.9} />
+        </mesh>
+        {slots.map((slot, i) => {
+          const x = (i % cols) * SPACING;
+          const z = Math.floor(i / cols) * SPACING;
+          return (
+            // Keyed by position so people stay mounted when they are regenerated.
+            <group key={i}>
+              {slot.seated && (
+                <>
+                  {/* Desk in front (toward -z); the chair faces it. */}
+                  <Prop type="desk" position={[x, 0, z - 0.78]} rotation={0} />
+                  <Prop type="chair" position={[x, 0, z]} rotation={Math.PI} />
+                </>
+              )}
+              <Person slot={slot} x={x} z={z} />
+            </group>
+          );
+        })}
+        <OrbitControls target={[(cols - 1) * SPACING * 0.5, 0.5, SPACING * 0.3]} enableDamping maxPolarAngle={1.35} />
+        <ScreenAnchors layer="studio" />
+      </Canvas>
+      {/* Name labels: page elements positioned over the 3D view (see scene/screenAnchors.tsx). */}
+      <div className="pointer-events-none absolute inset-0 isolate overflow-hidden">
+        {slots.map((slot, i) => (
+          <ScreenLabel key={i} layer="studio" point={[(i % cols) * SPACING, slot.activity === "celebrate" ? 2.45 : 2.05, Math.floor(i / cols) * SPACING]}>
+            <span className="rounded-full bg-nx-bg/80 px-2.5 py-1 text-[11px] font-medium whitespace-nowrap text-nx-text ring-1 ring-white/10">{slot.label}</span>
+          </ScreenLabel>
+        ))}
+      </div>
+    </div>
   );
 }

@@ -1,6 +1,5 @@
 "use client";
 
-import { Html } from "@react-three/drei";
 import { type ThreeEvent, useThree } from "@react-three/fiber";
 import { useEffect, useMemo } from "react";
 import { Color, MeshBasicMaterial, MeshLambertMaterial, MeshStandardMaterial, PlaneGeometry, type Texture } from "three";
@@ -11,6 +10,7 @@ import { FLOOR_BY_ID, isRoomVisible, rectCenter } from "../layout/queries";
 import type { FloorFinish, FloorId, RoomDef } from "../layout/types";
 import { useOfficeStore } from "../state/officeStore";
 import { FINISH_TILE, floorTexture } from "../textures";
+import { ScreenLabel } from "./screenAnchors";
 
 /** Drags longer than this (px) are camera pans, not clicks. */
 const CLICK_TOLERANCE = 6;
@@ -143,9 +143,8 @@ function RoomLabel({ room }: { room: RoomDef }) {
   const selectRoom = useOfficeStore((s) => s.selectRoom);
   const hoverRoom = useOfficeStore((s) => s.hoverRoom);
   const [cx, cz] = rectCenter(room.rect);
-  // Kept mounted and hidden with CSS: unmounting Html roots mid-render races React.
   return (
-    <Html position={[cx, floor.elevation + 2.9, cz]} center zIndexRange={[30, 0]} style={{ pointerEvents: "none", display: visible ? "block" : "none" }}>
+    <ScreenLabel layer="office" point={[cx, floor.elevation + 2.9, cz]} className="pointer-events-none" style={{ display: visible ? "block" : "none" }}>
       <button
         type="button"
         data-room-label={room.id}
@@ -165,7 +164,7 @@ function RoomLabel({ room }: { room: RoomDef }) {
         <span className="size-2 rounded-full" style={{ background: room.accent, boxShadow: `0 0 8px ${room.accent}` }} />
         {room.name}
       </button>
-    </Html>
+    </ScreenLabel>
   );
 }
 
@@ -180,6 +179,7 @@ export function Rooms({ floor }: { floor: FloorId }) {
   );
 }
 
+/** Room name labels as page DOM over the canvas (see screenAnchors.tsx). */
 export function RoomLabels() {
   return (
     <>

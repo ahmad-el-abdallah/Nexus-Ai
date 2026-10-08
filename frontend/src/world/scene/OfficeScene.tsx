@@ -19,7 +19,8 @@ import { Characters } from "./Characters";
 import { CameraRig } from "./CameraRig";
 import { Furniture } from "./Furniture";
 import { PerfProbe } from "./PerfProbe";
-import { RoomLabels, Rooms } from "./Rooms";
+import { Rooms } from "./Rooms";
+import { ScreenAnchors } from "./screenAnchors";
 import { consumeShadowUpdate, requestShadowUpdate } from "./runtime";
 import { Walls } from "./Walls";
 
@@ -157,7 +158,7 @@ export function OfficeScene({ bench }: { bench: boolean }) {
         </FloorLevel>
       ))}
       {people && <Characters />}
-      <RoomLabels />
+      <ScreenAnchors layer="office" />
       <CameraRig />
       {/* Lower the resolution only while the camera moves; still frames render at full DPR. */}
       <AdaptiveDpr />

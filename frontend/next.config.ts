@@ -18,6 +18,8 @@ const nextConfig: NextConfig = {
   cacheComponents: true,
   partialPrefetching: true,
   poweredByHeader: false,
+  // Development only: keep the Next.js indicator off the HQ camera buttons (bottom-left).
+  devIndicators: { position: "bottom-right" },
   turbopack: {
     rules: {
       "*.css": {

@@ -39,11 +39,12 @@ function SystemLink() {
   return (
     <Link
       href="/system"
-      className="flex h-10 items-center gap-2 rounded-xl bg-nx-bg/70 px-3 text-xs text-nx-muted ring-1 ring-nx-line-strong backdrop-blur-md transition hover:text-nx-text"
-      title="Open the system status console"
+      className="flex h-10 shrink-0 items-center gap-2 rounded-xl bg-nx-bg/70 px-3 text-xs text-nx-muted ring-1 ring-nx-line-strong backdrop-blur-md transition hover:text-nx-text"
+      title={`${label} — open the system status console`}
+      aria-label={label}
     >
       <StatusDot tone={tone} pulse={tone === "ok"} />
-      <span className="hidden sm:inline">{label}</span>
+      <span className="hidden 2xl:inline">{label}</span>
     </Link>
   );
 }
