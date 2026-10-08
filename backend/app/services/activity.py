@@ -10,14 +10,19 @@ one status the office shows (most recent activity wins):
 
 Suspended employees are never changed. Nothing here survives a restart (no work
 is running after one), so `recover()` returns everyone to idle.
+
+Each activity can also carry a *screen*: what the employee is working on and the
+text they are producing as it streams in. The 3D office draws it on their desk
+monitor — only real content, never invented.
 """
 
 from __future__ import annotations
 
 import asyncio
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import UTC, datetime
+from typing import Any
 
 from sqlalchemy import func, select, update
 
@@ -30,8 +35,40 @@ from app.schemas import EmployeeOut, dump
 log = get_logger("nexus.activity")
 
 FLASH_SECONDS = {"completed": 8.0, "error": 30.0}
+SCREEN_LINGER_SECONDS = 10.0  # a finished screen stays up briefly, marked done
+SCREEN_PUBLISH_SECONDS = 0.25  # at most ~4 screen updates per second per employee
+SCREEN_TEXT_CHARS = 2400
+SCREEN_BRIEF_CHARS = 1200
 WAITING_TASK = ("queued",)
 LIVE_WORKFLOW = ("running",)
+
+
+@dataclass
+class Screen:
+    """What is on an employee's monitor: real work only."""
+
+    kind: str  # chat | plan | breakdown | work | review | summary | report
+    title: str
+    brief: str = ""  # what they were asked, or the work they are reviewing
+    text: str = ""  # what they are producing, as it streams in
+    thinking: bool = False  # a reasoning model is thinking (its reasoning isn't shown)
+    done: bool = False
+    failed: bool = False
+    started_at: str = field(default_factory=lambda: datetime.now(UTC).isoformat())
+
+    def out(self) -> dict[str, Any]:
+        return {
+            "kind": self.kind,
+            "title": self.title[:200],
+            "brief": self.brief[-SCREEN_BRIEF_CHARS:]
+            if self.kind == "review"
+            else self.brief[:SCREEN_BRIEF_CHARS],
+            "text": self.text[-SCREEN_TEXT_CHARS:],
+            "thinking": self.thinking,
+            "done": self.done,
+            "failed": self.failed,
+            "started_at": self.started_at,
+        }
 
 
 @dataclass
@@ -39,6 +76,7 @@ class _Activity:
     status: str
     detail: str
     seq: int
+    screen: Screen | None = None
 
 
 class ActivityTracker:
@@ -50,14 +88,75 @@ class ActivityTracker:
         self._seq = 0
         self._lock = asyncio.Lock()
         self._timers: set[asyncio.Task[None]] = set()
+        self._linger: dict[str, tuple[Screen, float]] = {}
+        self._published: dict[str, float] = {}
+        self._pending_screen: dict[str, asyncio.TimerHandle] = {}
 
-    async def begin(self, employee_id: str, status: str, detail: str) -> int:
+    async def begin(
+        self, employee_id: str, status: str, detail: str, screen: Screen | None = None
+    ) -> int:
         self._seq += 1
         token = self._seq
-        self._active.setdefault(employee_id, {})[token] = _Activity(status, detail, token)
+        self._active.setdefault(employee_id, {})[token] = _Activity(status, detail, token, screen)
         self._flash.pop(employee_id, None)
+        if screen is not None:
+            self._linger.pop(employee_id, None)
+            self._publish_screen(employee_id, force=True)
         await self.refresh(employee_id)
         return token
+
+    # ----------------------------------------------------------------- screens
+
+    def update_screen(
+        self, employee_id: str, token: int, *, text: str | None = None, thinking: bool | None = None
+    ) -> None:
+        activity = self._active.get(employee_id, {}).get(token)
+        if activity is None or activity.screen is None:
+            return
+        if text is not None:
+            activity.screen.text = text
+            activity.screen.thinking = False
+        if thinking is not None:
+            activity.screen.thinking = thinking
+        self._publish_screen(employee_id)
+
+    def screen_of(self, employee_id: str) -> Screen | None:
+        activities = self._active.get(employee_id)
+        if activities:
+            latest = max(activities.values(), key=lambda a: a.seq)
+            if latest.screen is not None:
+                return latest.screen
+            withscreen = [a for a in activities.values() if a.screen is not None]
+            if withscreen:
+                return max(withscreen, key=lambda a: a.seq).screen
+        linger = self._linger.get(employee_id)
+        if linger and linger[1] > time.monotonic():
+            return linger[0]
+        return None
+
+    def screens(self) -> dict[str, dict[str, Any]]:
+        ids = set(self._active) | set(self._linger)
+        return {eid: s.out() for eid in ids if (s := self.screen_of(eid)) is not None}
+
+    def _publish_screen(self, employee_id: str, force: bool = False) -> None:
+        now = time.monotonic()
+        if not force and now - self._published.get(employee_id, 0.0) < SCREEN_PUBLISH_SECONDS:
+            # Throttled; make sure the latest text still goes out shortly.
+            if employee_id not in self._pending_screen:
+                self._pending_screen[employee_id] = asyncio.get_running_loop().call_later(
+                    SCREEN_PUBLISH_SECONDS, self._flush_screen, employee_id
+                )
+            return
+        self._published[employee_id] = now
+        screen = self.screen_of(employee_id)
+        self.events.publish(
+            "employee.screen",
+            {"employee_id": employee_id, "screen": screen.out() if screen else None},
+        )
+
+    def _flush_screen(self, employee_id: str) -> None:
+        self._pending_screen.pop(employee_id, None)
+        self._publish_screen(employee_id, force=True)
 
     async def end(
         self,
@@ -65,11 +164,23 @@ class ActivityTracker:
         token: int,
         outcome: str | None = None,
         detail: str | None = None,
+        *,
+        screen_failed: bool = False,
     ) -> None:
         activities = self._active.get(employee_id, {})
-        activities.pop(token, None)
+        ended = activities.pop(token, None)
         if not activities:
             self._active.pop(employee_id, None)
+        if ended is not None and ended.screen is not None:
+            failed = screen_failed or outcome == "error"
+            ended.screen.done = not failed
+            ended.screen.failed = failed
+            ended.screen.thinking = False
+            self._linger[employee_id] = (ended.screen, time.monotonic() + SCREEN_LINGER_SECONDS)
+            self._publish_screen(employee_id, force=True)
+            timer = asyncio.create_task(self._expire_screen(employee_id, SCREEN_LINGER_SECONDS))
+            self._timers.add(timer)
+            timer.add_done_callback(self._timers.discard)
         if outcome in FLASH_SECONDS and detail:
             await self.flash(employee_id, outcome, detail)
         else:
@@ -84,6 +195,13 @@ class ActivityTracker:
         self._timers.add(timer)
         timer.add_done_callback(self._timers.discard)
         await self.refresh(employee_id)
+
+    async def _expire_screen(self, employee_id: str, seconds: float) -> None:
+        await asyncio.sleep(seconds + 0.05)
+        linger = self._linger.get(employee_id)
+        if linger and linger[1] <= time.monotonic():
+            self._linger.pop(employee_id, None)
+            self._publish_screen(employee_id, force=True)
 
     async def _expire(self, employee_id: str, seconds: float) -> None:
         await asyncio.sleep(seconds + 0.05)
@@ -161,6 +279,9 @@ class ActivityTracker:
         return count
 
     async def shutdown(self) -> None:
+        for handle in self._pending_screen.values():
+            handle.cancel()
+        self._pending_screen.clear()
         timers = list(self._timers)
         for timer in timers:
             timer.cancel()

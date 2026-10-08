@@ -45,9 +45,22 @@ async def chat(
     body = await request.json()
     if body["model"] == "fake/locked":
         raise HTTPException(404, {"detail": "Function not found for account"})
+    # Workflow steps (plan, breakdown, work, review, summary, report) get valid replies.
+    canned = canned_reply(body["messages"][-1]["content"])
+    if canned is not None and body.get("stream"):
+
+        async def typed() -> AsyncIterator[str]:
+            words = canned.split(" ")
+            for i in range(0, len(words), 4):  # a few words at a time, like a real model
+                await asyncio.sleep(0.08)
+                piece = " ".join(words[i : i + 4]) + (" " if i + 4 < len(words) else "")
+                yield f"data: {json.dumps({'choices': [{'delta': {'content': piece}}]})}\n\n"
+            yield f"data: {json.dumps({'choices': [{'delta': {}, 'finish_reason': 'stop'}]})}\n\n"
+            yield f"data: {json.dumps({'choices': [], 'usage': {'prompt_tokens': 120, 'completion_tokens': 60}})}\n\n"
+            yield "data: [DONE]\n\n"
+
+        return StreamingResponse(typed(), media_type="text/event-stream")
     if not body.get("stream"):
-        # Workflow steps (plan, breakdown, work, review, summary, report) get valid replies.
-        canned = canned_reply(body["messages"][-1]["content"])
         if canned is not None:
             await asyncio.sleep(0.4)  # long enough for the UI to show each step
             return {

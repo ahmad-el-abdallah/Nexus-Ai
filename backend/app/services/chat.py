@@ -44,7 +44,7 @@ from app.models import (
     MessageStatus,
 )
 from app.schemas import AttachmentOut, MessageOut, dump
-from app.services.activity import ActivityTracker
+from app.services.activity import ActivityTracker, Screen
 from app.services.org import SENIORITY_LEVELS
 
 log = get_logger("nexus.chat")
@@ -118,6 +118,7 @@ class Reply:
     content: str = ""
     state: str = "queued"  # queued → generating (→ thinking) → writing → done
     activity: int | None = None  # status token while the employee is "working"
+    brief: str = ""  # the owner's message being answered
 
 
 class ChatService:
@@ -338,6 +339,8 @@ class ChatService:
             await self._publish_conversation(session, conversation)
             return message
         reply = Reply(conversation.id, message.id, responder.id)
+        # What the employee is answering (shown on their desk monitor).
+        reply.brief = next((t["content"] for t in reversed(history) if t["role"] == "user"), "")
         self.replies[conversation.id] = reply
         reply.task = asyncio.create_task(self._run(reply, events), name=f"reply-{message.id}")
         await self._publish_conversation(session, conversation)
@@ -350,7 +353,10 @@ class ChatService:
         last_flush = started
         try:
             reply.activity = await self.activity.begin(
-                reply.employee_id, EmployeeStatus.WORKING.value, CHAT_STATUS_DETAIL
+                reply.employee_id,
+                EmployeeStatus.WORKING.value,
+                CHAT_STATUS_DETAIL,
+                Screen("chat", "Reply to the owner", brief=reply.brief),
             )
             self._state(reply, "queued")
             async for event in events:
@@ -358,11 +364,19 @@ class ChatService:
                     self._state(reply, "generating")
                 elif event.kind == "reasoning" and reply.state != "thinking":
                     self._state(reply, "thinking")
+                    if reply.activity is not None:
+                        self.activity.update_screen(
+                            reply.employee_id, reply.activity, thinking=True
+                        )
                 elif event.kind == "text" and event.text:
                     if reply.state != "writing":
                         self._state(reply, "writing")
                     at = len(reply.content)
                     reply.content += event.text
+                    if reply.activity is not None:
+                        self.activity.update_screen(
+                            reply.employee_id, reply.activity, text=reply.content
+                        )
                     self.events.publish(
                         "message.token",
                         {
@@ -438,7 +452,11 @@ class ChatService:
             self.replies.pop(reply.conversation_id, None)
             self._state(reply, "done")
             if reply.activity is not None:
-                await self.activity.end(reply.employee_id, reply.activity)
+                await self.activity.end(
+                    reply.employee_id,
+                    reply.activity,
+                    screen_failed=status != MessageStatus.COMPLETE,
+                )
             async with self.database.sessionmaker() as session:
                 message = await session.get(Message, reply.message_id)
                 if message is not None:

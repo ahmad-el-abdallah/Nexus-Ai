@@ -341,6 +341,7 @@ class AIGateway:
         model: str | None = None,
         purpose: str,
         context: str | None = None,
+        max_tokens: int | None = None,
     ) -> tuple[Route, AsyncIterator[StreamEvent]]:
         """Validates and routes first (errors raise before streaming starts),
         then returns the route and an iterator of stream events. The first event
@@ -371,7 +372,7 @@ class AIGateway:
                 },
                 *messages,
             ]
-        max_tokens, temperature = cfg.max_output_tokens, cfg.temperature
+        max_tokens, temperature = max_tokens or cfg.max_output_tokens, cfg.temperature
 
         async def events() -> AsyncIterator[StreamEvent]:
             stats = CallStats()

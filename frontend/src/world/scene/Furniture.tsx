@@ -1,7 +1,7 @@
 "use client";
 
 import { useLayoutEffect, useMemo, useRef } from "react";
-import { type BufferGeometry, Color, type InstancedMesh, Matrix4, MeshBasicMaterial, PlaneGeometry, Quaternion, Vector3, Euler } from "three";
+import { type BufferGeometry, Color, type InstancedMesh, Matrix4, Quaternion, Vector3, Euler } from "three";
 import { useThree } from "@react-three/fiber";
 
 import { furnitureGeometry, MONITOR_SCREEN, monitorGeometry } from "../geometry/furniture";
@@ -10,7 +10,7 @@ import { WORKSTATIONS } from "../layout/building";
 import { FLOOR_BY_ID, placementsOn, ROOM_BY_ID } from "../layout/queries";
 import type { FloorId, FurnitureType, Workstation } from "../layout/types";
 import { castsShadow, FINISHES, finishMaterials, receivesShadow } from "../materials";
-import { lockScreenTexture } from "../textures";
+import { type DeskMonitor, DeskScreens } from "./DeskScreens";
 
 const noRaycast = () => null;
 const WHITE = new Color("#ffffff");
@@ -113,9 +113,16 @@ export function Furniture({ floor }: { floor: FloorId }) {
   }, [floor, elevation]);
 
   const monitors = useMemo(() => {
-    const matrices = WORKSTATIONS.filter((w) => w.floor === floor).flatMap((w) => monitorTransforms(w, elevation));
     const screen = new Matrix4().makeTranslation(0, MONITOR_SCREEN.y, MONITOR_SCREEN.z);
-    return { matrices, colors: matrices.map(() => WHITE.clone()), screens: matrices.map((m) => m.clone().multiply(screen)) };
+    const desks: DeskMonitor[] = [];
+    const matrices: Matrix4[] = [];
+    for (const ws of WORKSTATIONS.filter((w) => w.floor === floor)) {
+      monitorTransforms(ws, elevation).forEach((m, index) => {
+        matrices.push(m);
+        desks.push({ key: `${ws.id}:${index}`, ws, index, matrix: m.clone().multiply(screen) });
+      });
+    }
+    return { matrices, colors: matrices.map(() => WHITE.clone()), desks };
   }, [floor, elevation]);
 
   return (
@@ -126,38 +133,9 @@ export function Furniture({ floor }: { floor: FloorId }) {
       {monitors.matrices.length > 0 && (
         <>
           <InstancedParts label="monitor" parts={monitorGeometry()} matrices={monitors.matrices} colors={monitors.colors} />
-          <Screens matrices={monitors.screens} />
+          <DeskScreens monitors={monitors.desks} />
         </>
       )}
     </group>
   );
-}
-
-let screenResources: { geometry: PlaneGeometry; material: MeshBasicMaterial } | null = null;
-function screenAssets() {
-  if (!screenResources) {
-    const { texture, redraw } = lockScreenTexture();
-    const material = new MeshBasicMaterial({ map: texture, toneMapped: false });
-    material.color.setScalar(0.95);
-    screenResources = { geometry: new PlaneGeometry(MONITOR_SCREEN.width, MONITOR_SCREEN.height), material };
-    // Redraw once web fonts are ready so the lock-screen text uses Inter.
-    void document.fonts?.ready.then(() => redraw());
-  }
-  return screenResources;
-}
-
-function Screens({ matrices }: { matrices: Matrix4[] }) {
-  const ref = useRef<InstancedMesh>(null);
-  const invalidate = useThree((s) => s.invalidate);
-  const { geometry, material } = screenAssets();
-  useLayoutEffect(() => {
-    const mesh = ref.current;
-    if (!mesh) return;
-    matrices.forEach((m, i) => mesh.setMatrixAt(i, m));
-    mesh.instanceMatrix.needsUpdate = true;
-    mesh.computeBoundingSphere();
-    void document.fonts?.ready.then(() => invalidate());
-    invalidate();
-  }, [matrices, invalidate]);
-  return <instancedMesh ref={ref} name="monitor-screens" args={[geometry, material, matrices.length]} raycast={noRaycast} frustumCulled={false} />;
 }

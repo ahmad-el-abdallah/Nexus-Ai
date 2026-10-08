@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
-from typing import Annotated
+from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel, ConfigDict, Field
@@ -92,6 +92,13 @@ async def _set_status(
 async def list_employees(session: Session) -> list[Employee]:
     result = await session.scalars(select(Employee).order_by(Employee.department, Employee.name))
     return list(result)
+
+
+@router.get("/screens")
+async def screens(request: Request) -> dict[str, Any]:
+    """What is on each busy employee's desk monitor right now (real work only:
+    the task or message they are handling and the text they are producing)."""
+    return request.app.state.activity.screens()
 
 
 @router.post("", response_model=EmployeeOut, status_code=status.HTTP_201_CREATED)

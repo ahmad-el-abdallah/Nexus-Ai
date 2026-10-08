@@ -244,3 +244,10 @@ CEO → Aria Vance (698 ms, 2.8 s). Each reply introduced the right person and d
 
 Both used `nvidia/nemotron-3-super-120b-a12b`; departments whose only member is the
 supervisor do the work directly (no self-review).
+
+### Follow-up (owner request): desk monitors show real work
+
+Monitors in the 3D office now show each employee's actual current work in a role-styled
+app (code editor for engineers, documents for marketing, CRM for sales, spreadsheet for
+finance, …): the task or message they handle and the text they produce, streamed live.
+"View screen" looks over their shoulder. Nothing is invented — idle desks say so.

@@ -6,11 +6,14 @@ import { useCallback, useEffect, useRef } from "react";
 import { Box3, type OrthographicCamera, Vector3 } from "three";
 
 import { DEFAULT_AZIMUTH, DEFAULT_POLAR, fitBox, hudInsets, MAX_POLAR, MIN_POLAR, orientationFor } from "../camera/fit";
-import { SITE_BOUNDS } from "../layout/building";
+import { MONITOR_SCREEN } from "../geometry/furniture";
+import { SITE_BOUNDS, WORKSTATIONS } from "../layout/building";
 import { officeWorld } from "../characters/world";
 import { FLOOR_BY_ID, ROOM_BY_ID } from "../layout/queries";
 import { cameraInfo } from "./runtime";
+import { useEmployeeStore } from "../state/employeeStore";
 import { type CameraRequest, useOfficeStore } from "../state/officeStore";
+import { drawnScreens } from "./DeskScreens";
 
 const { ACTION } = CameraControlsImpl;
 const SITE_BOX = new Box3(new Vector3(...SITE_BOUNDS.min), new Vector3(...SITE_BOUNDS.max));
@@ -86,6 +89,27 @@ export function CameraRig() {
           const c = officeWorld.residents.get(req.employeeId)?.controller;
           if (!c || !c.visible) return;
           frame(new Box3(new Vector3(c.x - 2.2, c.elevation, c.z - 2.2), new Vector3(c.x + 2.2, c.elevation + 1.8, c.z + 2.2)), current, 40);
+          lastFit.current = req;
+          break;
+        }
+        case "screen": {
+          // Look over the employee's shoulder at their desk monitor(s).
+          const employee = useEmployeeStore.getState().employees.find((e) => e.id === req.employeeId);
+          const ws = employee?.desk_id ? WORKSTATIONS.find((w) => w.id === employee.desk_id) : undefined;
+          if (!ws) return;
+          const floor = FLOOR_BY_ID.get(ws.floor)!;
+          const depth = ws.style === "executive" ? -0.3 : ws.style === "reception" ? 0.05 : -0.22;
+          const cx = ws.x + Math.sin(ws.rot) * depth;
+          const cz = ws.z + Math.cos(ws.rot) * depth;
+          const half = ws.monitors === 2 ? 0.68 : 0.36;
+          const y = floor.elevation + MONITOR_SCREEN.y;
+          const polar = 0.82;
+          const box = new Box3(new Vector3(cx - half, y - 0.22, cz - half), new Vector3(cx + half, y + 0.22, cz + half));
+          const fit = fitBox(box, orientationFor(ws.rot, polar), viewport, insets, 12);
+          controls.maxZoom = Math.max(controls.maxZoom, fit.zoom);
+          void controls.rotateTo(ws.rot, polar, animate);
+          void controls.moveTo(fit.target.x, fit.target.y, fit.target.z, animate);
+          void controls.zoomTo(fit.zoom, animate);
           lastFit.current = req;
           break;
         }
@@ -230,9 +254,12 @@ export function CameraRig() {
         const p = new Vector3((room.rect.x0 + room.rect.x1) / 2, floor.elevation, (room.rect.z0 + room.rect.z1) / 2).project(camera);
         return { x: ((p.x + 1) / 2) * size.width, y: ((1 - p.y) / 2) * size.height };
       },
+      /** What each desk monitor shows (real work, drawn by DeskScreens). */
+      screens: () => [...drawnScreens.values()],
       actions: {
         selectRoom: (id: string | null) => useOfficeStore.getState().selectRoom(id),
         selectEmployee: (id: string | null) => useOfficeStore.getState().selectEmployee(id),
+        viewScreen: (id: string) => useOfficeStore.getState().viewScreen(id),
         setActiveFloor: (f: "all" | "L1" | "L2") => useOfficeStore.getState().setActiveFloor(f),
         resetView: () => useOfficeStore.getState().resetView(),
       },

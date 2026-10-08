@@ -486,6 +486,27 @@ cosmetic and is visibly distinct from work state.
 - **Honesty:** agents produce text only (no browsing, email or spending) and are told
   not to invent facts; the report says it is model-generated with assumptions to verify.
 
+### Desk monitors show real work (Stage 8 follow-up)
+
+- Every desk monitor in the 3D office is drawn from what its employee is **actually**
+  doing (`world/screens/`, `scene/DeskScreens.tsx`). The backend's activity tracker
+  keeps a *screen* per busy employee — the task or message they are handling and the
+  text they are producing — and streams it as `employee.screen` events (throttled to
+  ~4/s); `GET /api/employees/screens` returns the current set.
+- Workflow steps now stream from the model (like chat), so text appears on the monitor
+  as it is written. A finished screen stays up for 10 s marked "✓ Delivered".
+- **Style by role, content always real:** engineering/IT/QA a code editor, security a
+  terminal, data a notebook, design a canvas, marketing/PR/product/research/HR documents,
+  sales/support a CRM, finance/procurement a spreadsheet, legal a numbered document,
+  executives a briefing. Chrome (tabs, gutters, menus) is decoration; every word of
+  content comes from the employee's real work — code appears only when they write code.
+  Dual-monitor desks show the brief, the owner's message or the work under review on the
+  second screen. Idle desks show the employee's name and "No active task"; free desks
+  keep the lock screen; suspended employees' screens are off.
+- Each occupied monitor has its own 512×296 canvas texture, redrawn only when its
+  content changes (the scene keeps rendering on demand). "View screen" in the employee
+  panel moves the camera over their shoulder to read it.
+
 ### Performance budget and measurements
 
 

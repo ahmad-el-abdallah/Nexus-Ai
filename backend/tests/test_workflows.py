@@ -65,6 +65,10 @@ class AgentProvider:
             content = action
         else:
             content = canned_reply(prompt) or "ok"
+        if body.get("stream"):
+            return httpx.Response(
+                200, content=sse(content), headers={"content-type": "text/event-stream"}
+            )
         return httpx.Response(
             200,
             json={
@@ -73,6 +77,18 @@ class AgentProvider:
                 "usage": {"prompt_tokens": 100, "completion_tokens": 50},
             },
         )
+
+
+def sse(content: str | None) -> bytes:
+    """An OpenAI-style stream of `content` in a few chunks, then usage."""
+    chunks = []
+    text = content or ""
+    step = max(1, len(text) // 3)
+    for i in range(0, len(text), step):
+        chunks.append({"choices": [{"delta": {"content": text[i : i + step]}}]})
+    chunks.append({"choices": [{"delta": {}, "finish_reason": "stop"}]})
+    chunks.append({"choices": [], "usage": {"prompt_tokens": 100, "completion_tokens": 50}})
+    return "".join(f"data: {json.dumps(c)}\n\n" for c in chunks).encode() + b"data: [DONE]\n\n"
 
 
 @pytest.fixture
@@ -634,3 +650,80 @@ def test_breakdown_and_review_parsing() -> None:
     with pytest.raises(plans.PlanError):
         plans.parse_review('{"decision": "maybe"}')
     assert plans.topological_order({"a": ["b"], "b": []}) == ["b", "a"]
+
+
+# ------------------------------------------------------------ desk screens
+
+
+async def test_desk_screens_show_the_real_work(wf_client: httpx.AsyncClient) -> None:
+    app = wf_client.app  # type: ignore[attr-defined]
+    screens: list[dict[str, Any]] = []
+    async with app.state.events.subscribe() as sub:
+        plan = await start(wf_client)
+        await wf_client.post(f"/api/workflows/{plan['id']}/approve", json={})
+        done = await wait_for(wf_client, plan["id"], "completed", "partial", "failed")
+        while not sub.queue.empty():
+            event = sub.queue.get_nowait()
+            if event and event.type == "employee.screen" and event.data["screen"]:
+                screens.append(event.data)
+    work = [t for t in done["tasks"] if t["kind"] == "work"]
+    by_kind: dict[str, list[dict[str, Any]]] = {}
+    for s in screens:
+        by_kind.setdefault(s["screen"]["kind"], []).append(s)
+    assert {"plan", "breakdown", "work", "review", "summary", "report"} <= set(by_kind)
+
+    # A worker's screen: their real task, then exactly the text they delivered.
+    for task in work:
+        mine = [
+            s["screen"]
+            for s in by_kind["work"]
+            if s["employee_id"] == task["assignee_id"] and s["screen"]["title"] == task["title"]
+        ]
+        assert mine, task["title"]
+        assert mine[0]["brief"] == task["description"]
+        final = [s for s in mine if s["done"]]
+        assert final and final[-1]["text"].strip() == task["result"].strip()
+
+    # A reviewer's screen shows the deliverable they are actually reviewing.
+    review = by_kind["review"][0]["screen"]
+    reviewed = next(t for t in work if t["title"] in review["title"])
+    assert review["brief"].strip() == reviewed["result"].strip()
+
+    # Idle again afterwards: nothing invented on screens (lingering finished work aside).
+    current = (await wf_client.get("/api/employees/screens")).json()
+    assert all(s["done"] or s["failed"] for s in current.values())
+
+
+async def test_chat_reply_appears_on_the_employees_screen(wf_client: httpx.AsyncClient) -> None:
+    app = wf_client.app  # type: ignore[attr-defined]
+    roster = (await wf_client.get("/api/employees")).json()
+    cto = next(e for e in roster if e["role"] == "Chief Technology Officer")
+    cid = (
+        await wf_client.post(
+            "/api/conversations", json={"kind": "employee", "employee_id": cto["id"]}
+        )
+    ).json()["id"]
+    async with app.state.events.subscribe() as sub:
+        await wf_client.post(
+            f"/api/conversations/{cid}/messages", data={"content": "What should we build first?"}
+        )
+        reply = app.state.chat.replies.get(cid)
+        if reply and reply.task:
+            await reply.task
+        await asyncio.sleep(0.4)  # let the throttled final screen update go out
+        seen = []
+        while not sub.queue.empty():
+            event = sub.queue.get_nowait()
+            if (
+                event
+                and event.type == "employee.screen"
+                and event.data["employee_id"] == cto["id"]
+                and event.data["screen"]
+            ):
+                seen.append(event.data["screen"])
+    assert seen[0]["kind"] == "chat"
+    assert seen[0]["brief"] == "What should we build first?"
+    assert seen[-1]["done"] is True
+    message = (await wf_client.get(f"/api/conversations/{cid}/messages")).json()[-1]
+    assert seen[-1]["text"] == message["content"]
+    assert (await wf_client.get("/api/employees/screens")).json()[cto["id"]]["done"] is True

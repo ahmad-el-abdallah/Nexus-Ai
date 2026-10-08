@@ -13,6 +13,7 @@ export type CameraRequest =
   | { kind: "floor"; nonce: number }
   | { kind: "room"; roomId: string; nonce: number }
   | { kind: "employee"; employeeId: string; nonce: number }
+  | { kind: "screen"; employeeId: string; nonce: number }
   | { kind: "zoom"; factor: number; nonce: number }
   | { kind: "rotate"; angle: number; nonce: number };
 
@@ -33,6 +34,8 @@ export interface OfficeState {
   selectRoom: (roomId: string | null) => void;
   hoverRoom: (roomId: string | null) => void;
   selectEmployee: (employeeId: string | null, focus?: boolean) => void;
+  /** Over-the-shoulder view of an employee's desk monitor. */
+  viewScreen: (employeeId: string) => void;
   hoverEmployee: (employeeId: string | null) => void;
   setAmbient: (on: boolean) => void;
   setActiveFloor: (floor: ActiveFloor) => void;
@@ -85,6 +88,16 @@ export const useOfficeStore = create<OfficeState>((set, get) => ({
 
   hoverRoom: (roomId) => {
     if (get().hoveredRoomId !== roomId) set({ hoveredRoomId: roomId });
+  },
+
+  viewScreen: (employeeId) => {
+    const c = officeWorld.residents.get(employeeId)?.controller;
+    set({
+      selectedEmployeeId: employeeId,
+      selectedRoomId: null,
+      activeFloor: c?.visible ? floorShowing(c.floor, c.x, c.z, get().activeFloor) : get().activeFloor,
+      cameraRequest: { kind: "screen", employeeId, nonce: ++nonce },
+    });
   },
 
   selectEmployee: (employeeId, focus = true) => {

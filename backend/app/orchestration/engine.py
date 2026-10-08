@@ -49,7 +49,7 @@ from app.models import (
 )
 from app.orchestration import plans, prompts
 from app.schemas import TaskOut, dump
-from app.services.activity import ActivityTracker
+from app.services.activity import ActivityTracker, Screen
 from app.services.org import CEO_DEPARTMENT
 from app.services.staffing import available_ceo, available_members, lead_of
 
@@ -605,6 +605,7 @@ class Orchestrator:
                 EmployeeStatus.WORKING.value,
                 f"Planning: {title}",
                 MAX_TOKENS["plan"],
+                screen=Screen("plan", f"Plan: {title}", brief=objective),
             )
             return plans.parse_plan(text, available)
 
@@ -716,6 +717,7 @@ class Orchestrator:
                     EmployeeStatus.WORKING.value,
                     f"Planning: {a.title}",
                     MAX_TOKENS["breakdown"],
+                    screen=Screen("breakdown", f"Splitting up: {a.title}", brief=a.description),
                 )
                 return plans.parse_breakdown(text, team_ids)
 
@@ -835,6 +837,15 @@ class Orchestrator:
                 EmployeeStatus.WORKING.value,
                 f"Working on: {task.title}",
                 MAX_TOKENS["work"],
+                screen=Screen(
+                    "work",
+                    task.title,
+                    brief=(
+                        f"Revision requested: {task.review_notes}\n\n{task.description}"
+                        if task.revisions and task.review_notes
+                        else task.description
+                    ),
+                ),
             )
 
         try:
@@ -916,6 +927,9 @@ class Orchestrator:
                 EmployeeStatus.REVIEWING.value,
                 f"Reviewing: {task.title}",
                 MAX_TOKENS["review"],
+                screen=Screen(
+                    "review", f"Reviewing {worker_name}: {task.title}", brief=task.result or ""
+                ),
             )
             return plans.parse_review(text)
 
@@ -1016,6 +1030,11 @@ class Orchestrator:
                 EmployeeStatus.WORKING.value,
                 f"Summarising: {a.title}",
                 MAX_TOKENS["summary"],
+                screen=Screen(
+                    "summary",
+                    f"Department result: {a.title}",
+                    brief="\n".join(f"• {t} — {who}" for t, who, _ in results),
+                ),
             )
 
         try:
@@ -1065,6 +1084,7 @@ class Orchestrator:
                 if a.status in (TaskStatus.FAILED, TaskStatus.SKIPPED)
             ]
             plan = workflow.plan or {}
+            report_title, report_brief = workflow.title, workflow.objective
             prompt = prompts.consolidate_prompt(
                 workflow.objective,
                 plan.get("summary", ""),
@@ -1094,6 +1114,7 @@ class Orchestrator:
                 EmployeeStatus.WORKING.value,
                 "Consolidating the final report",
                 MAX_TOKENS["report"],
+                screen=Screen("report", f"Final report: {report_title}", brief=report_brief),
             )
 
         try:
@@ -1218,6 +1239,7 @@ class Orchestrator:
         status: str,
         detail: str,
         max_tokens: int,
+        screen: Screen | None = None,
     ) -> str:
         run = self.runs[workflow_id]
         async with run.calls_lock, self.database.sessionmaker() as session:
@@ -1226,19 +1248,35 @@ class Orchestrator:
                 raise _LimitReached
             workflow.calls_used += 1
             await session.commit()
-        token = await self.activity.begin(employee.id, status, detail)
+        # Streamed, so the employee's monitor shows the text as it is written.
+        token = await self.activity.begin(employee.id, status, detail, screen)
+        completion = None
+        written = ""
+        events = None
         try:
             async with self.database.sessionmaker() as session:
-                completion, _, _ = await self.gateway.complete(
+                _, events = await self.gateway.stream(
                     session,
                     [{"role": "user", "content": prompt}],
                     employee_id=employee.id,
                     purpose=purpose,
-                    max_tokens=max_tokens,
                     context=prompts.RULES,
+                    max_tokens=max_tokens,
                 )
+            async for event in events:
+                if event.kind == "reasoning":
+                    self.activity.update_screen(employee.id, token, thinking=True)
+                elif event.kind == "text" and event.text:
+                    written += event.text
+                    self.activity.update_screen(employee.id, token, text=written)
+                elif event.kind == "done":
+                    completion = event.completion
         finally:
-            await self.activity.end(employee.id, token)
+            if events is not None:
+                await events.aclose()  # type: ignore[attr-defined]
+            await self.activity.end(employee.id, token, screen_failed=completion is None)
+        if completion is None:
+            raise GatewayError("provider_unavailable", "The reply stream ended unexpectedly.")
         async with self.database.sessionmaker() as session:
             workflow = await session.get(Workflow, workflow_id)
             if workflow:

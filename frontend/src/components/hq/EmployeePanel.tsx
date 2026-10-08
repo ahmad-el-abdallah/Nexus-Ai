@@ -124,6 +124,16 @@ export function EmployeePanel() {
         >
           Message
         </Link>
+        {employee.desk_id && !suspended && (
+          <button
+            type="button"
+            onClick={() => useOfficeStore.getState().viewScreen(employee.id)}
+            title="Look over their shoulder at what is on their monitor"
+            className="rounded-lg px-3 py-2 text-xs font-medium text-nx-text ring-1 ring-nx-line-strong transition hover:bg-white/5"
+          >
+            View screen
+          </button>
+        )}
         <button
           type="button"
           onClick={() => useOfficeStore.getState().selectEmployee(employee.id)}

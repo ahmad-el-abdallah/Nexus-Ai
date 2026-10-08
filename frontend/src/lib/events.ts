@@ -27,6 +27,7 @@ export const LIVE_EVENTS = [
   "voice.settings",
   "workflow.updated",
   "workflow.event",
+  "employee.screen",
 ] as const;
 export type LiveEventType = (typeof LIVE_EVENTS)[number];
 

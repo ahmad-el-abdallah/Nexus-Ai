@@ -11,6 +11,7 @@ import { detectWebGL } from "@/lib/webgl";
 import { STATUS_META } from "@/world/characters/status";
 import { FloorPlan2D } from "@/world/plan2d/FloorPlan2D";
 import { startRosterSync, useEmployeeStore } from "@/world/state/employeeStore";
+import { startScreenSync } from "@/world/state/screenStore";
 import { type Quality, useOfficeStore } from "@/world/state/officeStore";
 
 import { NavLinks } from "@/components/org/AppShell";
@@ -104,6 +105,7 @@ export function Headquarters() {
   const selected = useOfficeStore((s) => s.selectedRoomId ?? s.selectedEmployeeId);
 
   useEffect(() => startRosterSync(), []);
+  useEffect(() => startScreenSync(), []);
 
   // Capability detection and URL options (?view=2d, ?quality=high|balanced|low, ?perf).
   useEffect(() => {
