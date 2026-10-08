@@ -29,7 +29,13 @@ Prerequisites: **Node.js 20.9+**, **uv** ([install](https://docs.astral.sh/uv/ge
 ```
 
 Logs from both servers appear in that terminal (prefixed `[api]` / `[web]`); press
-**Ctrl-C** once to stop both. The same thing step by step:
+**Ctrl-C** once to stop both.
+
+**On Windows:** double-click `start.bat`. It runs the servers inside WSL2 (it offers to
+install WSL2 if it is missing) and sets up Node.js and uv there on the first run. See
+[`docs/DEVELOPMENT.md`](docs/DEVELOPMENT.md#windows).
+
+The same thing step by step (Linux/macOS):
 
 ```bash
 make setup   # install dependencies, create .env files (generates a local secret key), migrate DB

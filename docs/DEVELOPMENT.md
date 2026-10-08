@@ -32,6 +32,31 @@ make dev
 
 Ctrl-C stops both.
 
+### Windows
+
+`start.bat` runs NEXUS inside **WSL2** (Linux on Windows). Running natively is not
+possible where Windows Smart App Control is on: it blocks the unsigned compiled Python
+packages the backend needs ("An Application Control policy has blocked this file").
+
+- **First time:** `start.bat` offers to install WSL2 with Ubuntu (administrator rights,
+  then restart Windows and open "Ubuntu" once to create the Linux user). After that,
+  `scripts/wsl-start.sh` installs Node.js 22 (checksum-verified, into
+  `~/.local/share/nexus-ai-wsl/node`) and uv (`~/.local/bin`) inside Linux — no
+  administrator rights — and `./start.sh` installs the project's dependencies.
+- **Every start** copies the Windows folder to a run copy at `~/nexus-ai` in Linux:
+  tracked files plus new files that aren't ignored, uncommitted changes included, with
+  Linux line endings. The Windows repository is only read. Edit code in the Windows
+  folder and restart `start.bat` to run it.
+- **Data lives in the run copy**, never in the Windows folder: `backend/.env` (the
+  secret key and, if you use it, `NVIDIA_API_KEY`), `backend/var/` (database, voice
+  models, sandbox runs) and installed dependencies. From Windows it is at
+  `\\wsl.localhost\Ubuntu\home\<linux user>\nexus-ai`. Back up `backend/.env` from there.
+- **▶ Run** on employee code needs `sudo apt install -y bubblewrap` in Ubuntu.
+- **`start.bat --lan`** needs WSL mirrored networking (`networkingMode=mirrored` under
+  `[wsl2]` in `%USERPROFILE%\.wslconfig`, then `wsl --shutdown`); with the default
+  networking only this PC can open NEXUS.
+- `make` targets and tests run in Ubuntu from `~/nexus-ai` (`wsl`, then `cd ~/nexus-ai`).
+
 ### Opening NEXUS from other devices (LAN)
 
 `./start.sh --lan` (or `NEXUS_LAN=1 make dev`) binds the frontend to `0.0.0.0` and
