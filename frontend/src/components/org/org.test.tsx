@@ -119,11 +119,12 @@ describe("EmployeeEditor", () => {
     const onClose = vi.fn();
     render(<EmployeeEditor onClose={onClose} department="finance" />);
     fireEvent.change(screen.getByLabelText("Name"), { target: { value: "Ada Okoye" } });
+    fireEvent.change(screen.getByLabelText("Gender"), { target: { value: "female" } });
     fireEvent.click(screen.getByRole("button", { name: "Hire employee" }));
     await waitFor(() => expect(onClose).toHaveBeenCalled());
     const [, init] = fetchMock.mock.calls.find(([, i]) => i?.method === "POST")!;
     const body = JSON.parse(String(init!.body));
-    expect(body).toEqual({ name: "Ada Okoye", department: "finance", role: "Financial Analyst", seniority: "mid", desk_id: null });
+    expect(body).toEqual({ name: "Ada Okoye", department: "finance", role: "Financial Analyst", seniority: "mid", gender: "female", desk_id: null });
     expect(useEmployeeStore.getState().employees.some((e) => e.id === "new")).toBe(true);
   });
 
@@ -134,6 +135,7 @@ describe("EmployeeEditor", () => {
     );
     const onClose = vi.fn();
     render(<EmployeeEditor employee={PEOPLE[2]} onClose={onClose} />);
+    fireEvent.change(screen.getByLabelText("Gender"), { target: { value: "male" } });
     fireEvent.change(screen.getByLabelText("Desk"), { target: { value: "sales-desk-2" } });
     fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
     expect(await screen.findByRole("alert")).toHaveTextContent("already taken");

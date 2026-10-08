@@ -39,6 +39,7 @@ class EmployeeChanges:
     role: str | None = None
     department: str | None = None
     seniority: str | None = None
+    gender: str | None = None
     desk_id: str | None = None
     supervisor_id: str | None = None
     # Distinguish "not provided" from an explicit null.
@@ -119,6 +120,7 @@ async def create_employee(
     seniority: str,
     desk_id: str | None,
     supervisor_id: str | None,
+    gender: str | None = None,
 ) -> Employee:
     department = await department_or_error(session, department_key)
     if role not in department.roles:
@@ -137,6 +139,7 @@ async def create_employee(
         desk_id=desk_id,
         supervisor_id=supervisor,
         avatar_seed=random.randint(1, 1_000_000),  # noqa: S311 - cosmetic seed, not security
+        gender=gender,
         status="idle",
     )
     session.add(employee)
@@ -183,6 +186,8 @@ async def update_employee(
     employee.department = department.key
     if changes.seniority is not None:
         employee.seniority = changes.seniority
+    if changes.gender is not None:
+        employee.gender = changes.gender
     if changes.desk_set:
         employee.desk_id = changes.desk_id
     employee.supervisor_id = supervisor

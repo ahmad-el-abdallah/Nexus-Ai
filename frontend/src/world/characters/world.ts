@@ -50,8 +50,8 @@ export class OfficeWorld {
       const home = employee.desk_id ? (DESK_SEATS.get(employee.desk_id) ?? null) : null;
       const existing = this.residents.get(employee.id);
       if (existing && existing.employee.avatar_seed === employee.avatar_seed) {
-        if (existing.employee.department !== employee.department || existing.accent !== accents[employee.department]) {
-          existing.appearance = generateAppearance(employee.avatar_seed, employee.department, accents[employee.department]);
+        if (existing.employee.department !== employee.department || existing.employee.gender !== employee.gender || existing.accent !== accents[employee.department]) {
+          existing.appearance = generateAppearance(employee.avatar_seed, employee.department, accents[employee.department], employee.gender);
           existing.accent = accents[employee.department];
         }
         if (existing.employee.desk_id !== employee.desk_id) existing.controller.home = home;
@@ -61,7 +61,7 @@ export class OfficeWorld {
       this.residents.set(employee.id, {
         employee,
         accent: accents[employee.department],
-        appearance: generateAppearance(employee.avatar_seed, employee.department, accents[employee.department]),
+        appearance: generateAppearance(employee.avatar_seed, employee.department, accents[employee.department], employee.gender),
         controller: new CharacterController(employee.id, employee.avatar_seed, home, employee.status),
       });
     }

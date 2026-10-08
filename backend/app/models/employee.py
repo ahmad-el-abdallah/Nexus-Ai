@@ -47,6 +47,9 @@ class Employee(TimestampMixin, Base):
     model_id: Mapped[str | None] = mapped_column(String(200), nullable=True)
     # Seed for the deterministic avatar generator in the frontend.
     avatar_seed: Mapped[int] = mapped_column(Integer, nullable=False)
+    # "female" | "male" (null: not set). Drives the voice, the character's look and
+    # grammatical gender when the employee speaks Arabic.
+    gender: Mapped[str | None] = mapped_column(String(8), nullable=True)
     status: Mapped[str] = mapped_column(
         String(20), nullable=False, default=EmployeeStatus.IDLE.value
     )

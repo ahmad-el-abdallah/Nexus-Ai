@@ -260,7 +260,8 @@ class ChatService:
                 "say so if you need something from earlier."
             )
         lines.append(
-            "Reply in the language of the owner's latest message (for example Arabic or English)."
+            "Reply in the language of the owner's latest message: Arabic if it is in Arabic, "
+            "otherwise English."
         )
         lines.append(
             "You cannot start or execute tasks yourself yet. If the owner asks for work, "

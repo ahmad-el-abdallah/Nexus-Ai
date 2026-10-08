@@ -37,6 +37,7 @@ from app.voice.engines import (
     WhisperEngine,
     decode_audio,
 )
+from app.voice.voices import voice_for
 
 log = get_logger("nexus.voice")
 
@@ -314,12 +315,21 @@ class VoiceService:
         return transcript, int((time.perf_counter() - started) * 1000), model_id
 
     async def synthesize(
-        self, text: str, language: str, speaker: int | None, speech_rate: float
+        self,
+        text: str,
+        language: str,
+        speaker: int | None,
+        speech_rate: float,
+        gender: str | None = None,
     ) -> tuple[bytes, str]:
+        """`speaker` is the employee's voice seed; the voice matches their `gender`."""
         voice = AR_VOICE if language == "ar" else EN_VOICE
+        choice = voice_for(speaker, gender, language)
         engine = await self._tts_engine(voice)
         async with self._tts_lock:
-            audio = await asyncio.to_thread(engine.synthesize, text, speaker, speech_rate)
+            audio = await asyncio.to_thread(
+                engine.synthesize, text, choice.speaker, speech_rate, choice.pitch
+            )
         return audio, voice
 
     async def shutdown(self) -> None:

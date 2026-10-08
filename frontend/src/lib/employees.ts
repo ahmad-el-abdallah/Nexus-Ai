@@ -22,6 +22,8 @@ export interface Employee {
   supervisor_id: string | null;
   model_id?: string | null;
   avatar_seed: number;
+  /** Drives the voice, the character's look and grammatical gender in Arabic. */
+  gender?: Gender | null;
   status: EmployeeStatus;
   status_detail: string | null;
   status_changed_at: string;
@@ -67,11 +69,14 @@ export const activateEmployee = (id: string) => request<Employee>(`/api/employee
 export type Seniority = "executive" | "director" | "senior" | "mid" | "junior";
 export const SENIORITY: Seniority[] = ["executive", "director", "senior", "mid", "junior"];
 
+export type Gender = "female" | "male";
+
 export interface EmployeeDraft {
   name: string;
   department: string;
   role: string;
   seniority: Seniority;
+  gender?: Gender | null;
   desk_id: string | null;
   supervisor_id?: string | null;
   model_id?: string | null;

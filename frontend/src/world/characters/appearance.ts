@@ -66,9 +66,13 @@ function mulberry32(seed: number) {
 
 const pick = <T,>(r: () => number, list: readonly T[]): T => list[Math.floor(r() * list.length)];
 
-export function generateAppearance(seed: number, department = "", accent?: string): Appearance {
+// Looks that match the employee's gender (unset: any).
+const FEMALE_HAIR: HairStyle[] = ["long", "bun", "ponytail", "bob", "curly", "headscarf"];
+const MALE_HAIR: HairStyle[] = ["short", "buzz", "curly", "bald", "short"];
+
+export function generateAppearance(seed: number, department = "", accent?: string, gender?: string | null): Appearance {
   const r = mulberry32(seed * 2654435761);
-  const hairStyle = pick(r, HAIR_STYLES);
+  const hairStyle = pick(r, gender === "female" ? FEMALE_HAIR : gender === "male" ? MALE_HAIR : HAIR_STYLES);
   const tones = DEPARTMENT_TONES[department] ?? (accent ? tonesFromAccent(accent) : NEUTRALS);
   const top = pick(r, TOPS);
   const coloured = r() < 0.65;
@@ -86,7 +90,8 @@ export function generateAppearance(seed: number, department = "", accent?: strin
     shoeColor: pick(r, SHOES),
     glasses: r() < 0.3,
     headset: department === "sales" ? r() < 0.6 : r() < 0.12,
-    beard: hairStyle !== "headscarf" && hairStyle !== "long" && hairStyle !== "bun" && hairStyle !== "ponytail" && hairStyle !== "bob" && r() < 0.35,
+    beard:
+      gender !== "female" && hairStyle !== "headscarf" && hairStyle !== "long" && hairStyle !== "bun" && hairStyle !== "ponytail" && hairStyle !== "bob" && r() < (gender === "male" ? 0.45 : 0.35),
   };
 }
 

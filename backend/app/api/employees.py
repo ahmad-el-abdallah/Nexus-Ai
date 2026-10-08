@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
-from typing import Annotated, Any
+from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel, ConfigDict, Field
@@ -36,6 +36,7 @@ class EmployeeCreate(BaseModel):
     department: str
     role: str
     seniority: str = "mid"
+    gender: Literal["female", "male"] | None = None
     desk_id: str | None = None
     supervisor_id: str | None = None
 
@@ -47,6 +48,7 @@ class EmployeePatch(BaseModel):
     department: str | None = None
     role: str | None = None
     seniority: str | None = None
+    gender: Literal["female", "male"] | None = None
     desk_id: str | None = None
     supervisor_id: str | None = None
     model_id: str | None = None
@@ -111,6 +113,7 @@ async def hire_employee(body: EmployeeCreate, session: Session, request: Request
             department_key=body.department,
             role=body.role,
             seniority=body.seniority,
+            gender=body.gender,
             desk_id=body.desk_id,
             supervisor_id=body.supervisor_id,
         )
@@ -136,6 +139,7 @@ async def edit_employee(
         role=body.role,
         department=body.department,
         seniority=body.seniority,
+        gender=body.gender,
         desk_id=body.desk_id,
         supervisor_id=body.supervisor_id,
         desk_set="desk_id" in fields,

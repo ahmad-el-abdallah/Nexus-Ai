@@ -15,6 +15,7 @@ from app.models import Employee, Message, MessageRole
 from app.voice.catalog import MODELS, STT_MODELS
 from app.voice.service import VoiceError, VoiceService
 from app.voice.text import chunks, language_of, speakable
+from app.voice.voices import voice_for
 
 router = APIRouter(prefix="/api/voice", tags=["voice"])
 log = get_logger("nexus.voice.api")
@@ -184,7 +185,9 @@ async def speech_plan(message_id: int, session: Session) -> SpeechPlan:
     return SpeechPlan(
         message_id=message.id,
         employee_id=message.employee_id,
-        speaker=employee.avatar_seed if employee else None,
+        speaker=voice_for(employee.avatar_seed, employee.gender, "en").speaker
+        if employee
+        else None,
         parts=parts,
     )
 
@@ -201,13 +204,16 @@ class SpeakIn(BaseModel):
 async def speak(body: SpeakIn, session: Session, voice: Voice) -> Response:
     """Text → speech (WAV) on this machine, in the employee's own voice."""
     prefs = await voice.preferences(session)
-    speaker = None
+    speaker = gender = None
     if body.employee_id:
         employee = await session.get(Employee, body.employee_id)
-        speaker = employee.avatar_seed if employee else None
+        if employee:
+            speaker, gender = employee.avatar_seed, employee.gender
     language = body.language or language_of(body.text)
     try:
-        audio, model = await voice.synthesize(body.text, language, speaker, prefs.speech_rate)
+        audio, model = await voice.synthesize(
+            body.text, language, speaker, prefs.speech_rate, gender
+        )
     except VoiceError as error:
         raise _error(error) from error
     except Exception as error:

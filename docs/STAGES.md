@@ -274,3 +274,12 @@ sent, rejected and the email log. Design: [`adr/0002-email-sending.md`](adr/0002
 | No duplicate emails during retry | PASS | Auto-retry only when the server definitely didn't accept the message (≤ 2); a broken connection mid-send is "uncertain" and never resent without explicit confirmation |
 | No secret leaks | PASS | Passwords, API keys, OAuth tokens and client secrets are encrypted and never returned or logged (tests); client bundle and repo scanned for secret values |
 
+### Follow-up (owner request): English/Arabic only, gender-matched voices
+
+- Agents write only in English or Arabic, in the owner's language; voice input is
+  recognised as English or Arabic and transcribed as spoken, never translated.
+- Every employee has a gender (migration 0009; seeded staff set from their original
+  roster, editable, chosen when hiring). Female employees get female English voices and
+  a raised Arabic voice (no female Arabic voice exists locally), use feminine Arabic
+  forms, and look the part in the 3D office (no beards, matching hair).
+

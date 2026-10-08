@@ -59,7 +59,12 @@ class SpeechToText(Protocol):
 
 
 class TextToSpeech(Protocol):
-    def synthesize(self, text: str, speaker: int | None, length_scale: float) -> bytes: ...
+    def synthesize(
+        self, text: str, speaker: int | None, length_scale: float, pitch: float = 1.0
+    ) -> bytes: ...
+
+
+SUPPORTED_LANGUAGES = ("en", "ar")
 
 
 class WhisperEngine:
@@ -69,10 +74,28 @@ class WhisperEngine:
         threads = max(1, min(4, os.cpu_count() or 1))
         self.model = WhisperModel(str(path), device="cpu", compute_type="int8", cpu_threads=threads)
 
+    def detect(self, audio: np.ndarray) -> tuple[str, float]:
+        """English or Arabic, whichever Whisper finds more likely. NEXUS only speaks these
+        two, and letting Whisper pick from ~99 languages makes short Arabic clips come out
+        in another language or script."""
+        try:
+            _, _, probs = self.model.detect_language(audio, vad_filter=True)
+        except (ValueError, RuntimeError):  # no speech left after VAD
+            _, _, probs = self.model.detect_language(audio)
+        scores = dict(probs)
+        en, ar = float(scores.get("en", 0.0)), float(scores.get("ar", 0.0))
+        language = "ar" if ar > en else "en"
+        total = en + ar
+        return language, (max(en, ar) / total) if total else 0.0
+
     def transcribe(self, audio: np.ndarray, language: str | None) -> Transcript:
-        segments, info = self.model.transcribe(
+        probability = 1.0
+        if language not in SUPPORTED_LANGUAGES:
+            language, probability = self.detect(audio)
+        segments, _ = self.model.transcribe(
             audio,
             language=language,
+            task="transcribe",  # write down what was said, in that language — never translate
             beam_size=1,
             vad_filter=True,  # skips silence, which also prevents invented text
             condition_on_previous_text=False,
@@ -80,8 +103,8 @@ class WhisperEngine:
         text = " ".join(s.text.strip() for s in segments).strip()
         return Transcript(
             text=text,
-            language=info.language,
-            language_probability=round(float(info.language_probability), 3),
+            language=language,
+            language_probability=round(probability, 3),
             duration_s=round(len(audio) / SAMPLE_RATE, 2),
         )
 
@@ -93,19 +116,39 @@ class PiperEngine:
         self.voice = PiperVoice.load(model_path)
         self.speakers = int(self.voice.config.num_speakers or 1)
 
-    def synthesize(self, text: str, speaker: int | None, length_scale: float) -> bytes:
+    def synthesize(
+        self, text: str, speaker: int | None, length_scale: float, pitch: float = 1.0
+    ) -> bytes:
+        """`pitch` > 1 raises the voice: the speech is generated that much slower, then
+        played back that much faster (a higher sample rate), so its length is unchanged."""
         from piper.config import SynthesisConfig
 
         config = SynthesisConfig(
             speaker_id=speaker % self.speakers
             if speaker is not None and self.speakers > 1
             else None,
-            length_scale=length_scale,
+            length_scale=length_scale * pitch,
         )
         buffer = io.BytesIO()
         with wave.open(buffer, "wb") as wav:
             self.voice.synthesize_wav(text, wav, syn_config=config)
-        return buffer.getvalue()
+        return retune(buffer.getvalue(), pitch)
+
+
+def retune(wav_bytes: bytes, pitch: float) -> bytes:
+    """Plays a WAV `pitch` times faster by rewriting its sample rate (no resampling)."""
+    if abs(pitch - 1.0) < 1e-3:
+        return wav_bytes
+    with wave.open(io.BytesIO(wav_bytes), "rb") as source:
+        params = source.getparams()
+        frames = source.readframes(params.nframes)
+    out = io.BytesIO()
+    with wave.open(out, "wb") as wav:
+        wav.setnchannels(params.nchannels)
+        wav.setsampwidth(params.sampwidth)
+        wav.setframerate(round(params.framerate * pitch))
+        wav.writeframes(frames)
+    return out.getvalue()
 
 
 # ------------------------------------------------------------- test doubles
@@ -124,11 +167,13 @@ class FakeSpeechToText:
 class FakeTextToSpeech:
     """Test double: 0.2 s of silence as a valid WAV file."""
 
-    def synthesize(self, text: str, speaker: int | None, length_scale: float) -> bytes:
+    def synthesize(
+        self, text: str, speaker: int | None, length_scale: float, pitch: float = 1.0
+    ) -> bytes:
         buffer = io.BytesIO()
         with wave.open(buffer, "wb") as wav:
             wav.setnchannels(1)
             wav.setsampwidth(2)
             wav.setframerate(22_050)
             wav.writeframes(b"\x00\x00" * 4_410)
-        return buffer.getvalue()
+        return retune(buffer.getvalue(), pitch)

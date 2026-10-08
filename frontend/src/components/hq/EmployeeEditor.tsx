@@ -2,7 +2,7 @@
 
 import { type FormEvent, useEffect, useId, useMemo, useRef, useState } from "react";
 
-import { type Employee, type EmployeeDraft, SENIORITY, type Seniority } from "@/lib/employees";
+import { type Employee, type EmployeeDraft, type Gender, SENIORITY, type Seniority } from "@/lib/employees";
 import { ModelPicker } from "@/components/settings/ModelPicker";
 import { WORKSTATIONS } from "@/world/layout/building";
 import { useAIStore } from "@/world/state/aiStore";
@@ -40,6 +40,7 @@ export function EmployeeEditor({ employee, department, onClose, onSaved, onDelet
     department: initialDept,
     role: employee?.role ?? departments.find((d) => d.key === initialDept)?.roles[1] ?? "",
     seniority: (employee?.seniority as Seniority) ?? "mid",
+    gender: employee?.gender ?? null,
     desk_id: employee?.desk_id ?? null,
     supervisor_id: employee?.supervisor_id ?? null,
     model_id: employee?.model_id ?? null,
@@ -177,6 +178,16 @@ export function EmployeeEditor({ employee, department, onClose, onSaved, onDelet
                   {s[0].toUpperCase() + s.slice(1)}
                 </option>
               ))}
+            </select>
+          </label>
+          <label className={label}>
+            Gender
+            <select value={draft.gender ?? ""} onChange={(e) => set("gender", (e.target.value || null) as Gender | null)} className={field} required={!employee}>
+              <option value="" disabled={!employee}>
+                Choose…
+              </option>
+              <option value="female">Female</option>
+              <option value="male">Male</option>
             </select>
           </label>
           <label className={label}>

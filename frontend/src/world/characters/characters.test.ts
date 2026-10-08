@@ -34,6 +34,16 @@ describe("appearance generator", () => {
     }
   });
 
+  it("matches the look to the employee's gender", () => {
+    const women = Array.from({ length: 200 }, (_, i) => generateAppearance(i + 1, "sales", undefined, "female"));
+    const men = Array.from({ length: 200 }, (_, i) => generateAppearance(i + 1, "sales", undefined, "male"));
+    expect(women.some((a) => a.beard)).toBe(false);
+    expect(new Set(women.map((a) => a.hairStyle))).toEqual(new Set(["long", "bun", "ponytail", "bob", "curly", "headscarf"]));
+    expect(men.every((a) => ["short", "buzz", "curly", "bald"].includes(a.hairStyle))).toBe(true);
+    expect(men.some((a) => a.beard)).toBe(true);
+    expect(generateAppearance(5, "sales", undefined, "female")).toEqual(generateAppearance(5, "sales", undefined, "female"));
+  });
+
   it("makes initials", () => {
     expect(initials("Aria Vance")).toBe("AV");
     expect(initials("Cher")).toBe("C");

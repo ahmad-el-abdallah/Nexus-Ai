@@ -471,8 +471,18 @@ cosmetic and is visibly distinct from work state.
   text.
 - **Spoken replies:** a reply is turned into speakable text (Markdown, code and links
   removed), split into sentence groups and synthesised part by part, the next part
-  fetched while one plays. Each employee has their own English voice (speaker chosen
-  from `avatar_seed`); Arabic uses one voice. The language is detected per part.
+  fetched while one plays. The language is detected per part.
+- **Voices match the employee's gender** (`employees.gender`, set for every seeded
+  employee and chosen when hiring). English: each employee keeps one of the 399 female
+  or 441 male LibriTTS-R speakers (`voice/speakers.py`: LibriSpeech's speaker metadata,
+  then every voice's pitch measured on this machine; ambiguous voices excluded). Arabic:
+  the only local Arabic voice (Kareem) is male, so women use it raised 1.5× (~112 →
+  ~168 Hz: generated slower, played faster) — an approximation until a female Arabic
+  voice exists. The same gender gives the character a matching look and makes the
+  agent use feminine/masculine Arabic forms for itself.
+- **English and Arabic only:** recognition picks English or Arabic (whichever Whisper
+  scores higher) and always transcribes — never translates — what was said; agents are
+  told to write only in English or Arabic, in the language the owner used.
 - **Voice sessions:** replies are read aloud; in hands-free mode the mic reopens after
   each reply, stops after 1.5 s of silence, and the transcript is sent after a 3-second
   countdown that editing the text cancels. Silence or an empty transcript pauses

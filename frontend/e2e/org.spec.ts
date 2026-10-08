@@ -23,6 +23,7 @@ test.describe("Departments and organisation", () => {
     await page.getByRole("button", { name: "Hire into Finance" }).click();
     const editor = page.getByTestId("employee-editor");
     await editor.getByLabel("Name").fill("Ada Okoye");
+    await editor.getByLabel("Gender").selectOption("female");
     await editor.getByLabel("Role").selectOption("Financial Analyst");
     await editor.getByLabel("Desk").selectOption("sales-desk-4");
     await editor.getByRole("button", { name: "Hire employee" }).click();

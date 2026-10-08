@@ -25,6 +25,12 @@
 - Email accounts store the preset key (`gmail`) in `provider`; OAuth endpoints are keyed
   by `preset.oauth` (`google`).
 
+- Piper adds random variation to every synthesis, so the opt-in real round-trip voice
+  test (`NEXUS_TEST_VOICE_MODELS`) can miss its 85 % word match on some runs; the
+  language assertion is the stable part.
+- English voices by gender live in `voice/speakers.py` (generated from LibriSpeech
+  SPEAKERS.TXT + measured pitch); don't pick speakers from `avatar_seed` directly.
+
 ## Frontend / 3D
 - drei `<Html>` creates a React root per label → "synchronously unmount a root" errors in
   dev Strict Mode. Use `ScreenAnchors` + `ScreenLabel`.

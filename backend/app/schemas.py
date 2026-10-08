@@ -22,6 +22,7 @@ class EmployeeOut(BaseModel):
     supervisor_id: str | None
     model_id: str | None
     avatar_seed: int
+    gender: str | None = None
     status: EmployeeStatus
     status_detail: str | None
     status_changed_at: datetime

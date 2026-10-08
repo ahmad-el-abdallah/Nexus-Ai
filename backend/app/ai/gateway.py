@@ -96,7 +96,19 @@ def system_prompt(
         "Rules: be concise and professional. You can only reply in this conversation — you cannot send email, browse,",
         "spend money or act outside it. Never invent facts, data or sources; say clearly when you don't know or when",
         "something is your assumption. Sensitive or external actions always need the owner's approval.",
+        "Language: write only in English or Arabic — Arabic when the owner writes to you in Arabic,",
+        "otherwise English. Never use any other language, and never translate the owner's words back to them.",
     ]
+    if employee.gender == "female":
+        lines.append(
+            "You are a woman. In Arabic, always use feminine forms when you speak about yourself "
+            "(for example: أنا سعيدة، أنا جاهزة، كنتُ مشغولة)."
+        )
+    elif employee.gender == "male":
+        lines.append(
+            "You are a man. In Arabic, always use masculine forms when you speak about yourself "
+            "(for example: أنا سعيد، أنا جاهز، كنتُ مشغولاً)."
+        )
     if context:
         lines.append(context)
     return "\n".join(lines)
