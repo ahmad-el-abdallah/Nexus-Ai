@@ -32,6 +32,18 @@ make dev
 
 Ctrl-C stops both.
 
+### Opening NEXUS from other devices (LAN)
+
+`./start.sh --lan` (or `NEXUS_LAN=1 make dev`) binds the frontend to `0.0.0.0` and
+prints `http://<this machine's IP>:3000` for phones and other computers on the same
+network. The backend stays on `127.0.0.1`; other devices reach it through the `/api/*`
+proxy. Notes:
+- There is no login: anyone on the network can use NEXUS (and its AI budget). Use it on a
+  network you trust only.
+- The microphone needs a secure page, so voice only works at `http://localhost:3000`.
+- If another device can't connect, allow the port in the firewall:
+  `sudo ufw allow from 192.168.0.0/16 to any port 3000 proto tcp`.
+
 ## Commands
 
 | Command | Purpose |

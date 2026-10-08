@@ -4,6 +4,10 @@ import type { NextConfig } from "next";
 // proxied to the FastAPI backend, whose address stays server-side.
 const backendUrl = (process.env.NEXUS_BACKEND_URL ?? "http://127.0.0.1:8000").replace(/\/+$/, "");
 
+// LAN mode (`./start.sh --lan`): the dev server only serves its scripts and hot reload to
+// hosts listed here, so the start script passes this machine's network addresses.
+const allowedDevOrigins = (process.env.NEXUS_DEV_ORIGINS ?? "").split(/[\s,]+/).filter(Boolean);
+
 const securityHeaders = [
   { key: "X-Content-Type-Options", value: "nosniff" },
   { key: "X-Frame-Options", value: "DENY" },
@@ -18,6 +22,7 @@ const nextConfig: NextConfig = {
   cacheComponents: true,
   partialPrefetching: true,
   poweredByHeader: false,
+  allowedDevOrigins,
   // Development only: keep the Next.js indicator off the HQ camera buttons (bottom-left).
   devIndicators: { position: "bottom-right" },
   turbopack: {

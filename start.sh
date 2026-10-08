@@ -2,6 +2,8 @@
 # Start NEXUS AI — backend and frontend together, in this one terminal.
 #
 #   ./start.sh            then open http://localhost:3000
+#   ./start.sh --lan      also reachable from other devices on your network
+#                         (http://<this machine's IP>:3000 — printed at startup)
 #
 # The first run installs everything (same as `make setup`). Logs from both servers
 # appear here, prefixed [api] and [web]. Press Ctrl-C once to stop both.
@@ -27,4 +29,4 @@ for port in "$API_PORT" "$WEB_PORT"; do
   fi
 done
 
-exec ./scripts/dev.sh
+exec ./scripts/dev.sh "$@"
