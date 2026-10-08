@@ -1,0 +1,36 @@
+# Known pitfalls (learned the hard way)
+
+## Backend
+- **Commit status + timeline event + chat message in one transaction**
+  (`Orchestrator._commit_with`), or clients/tests see one without the other.
+- **Stop and await in-flight steps before cancelling or shutting down**
+  (`Orchestrator._halt`), otherwise a finishing step overwrites "cancelled" or the event
+  loop hangs on a closed database.
+- Publish task updates from a fresh read (`_publish_task`): server-set timestamps are
+  expired after commit and lazy-loading them outside async context crashes.
+- Uvicorn waits for open SSE streams on shutdown → `install_shutdown_hook()` closes them;
+  `timeout_graceful_shutdown=3` is the backstop.
+- SSE through `next start` is gzip-buffered unless the response has
+  `Cache-Control: no-transform`.
+- faster-whisper 1.2.1 can't decode audio with PyAV 19 → the app decodes audio itself
+  (`voice/engines.py:decode_audio`).
+- The AI base URL is stored in the DB (`ai_provider_settings.base_url`), not only in env —
+  a copied dev DB still points at real NVIDIA.
+- Reasoning models may echo the format tag or spend all tokens thinking; free-text
+  results go through `prompts.clean_text`, empty replies are retried.
+
+## Frontend / 3D
+- drei `<Html>` creates a React root per label → "synchronously unmount a root" errors in
+  dev Strict Mode. Use `ScreenAnchors` + `ScreenLabel`.
+- Postprocessing disables renderer tone mapping (add a ToneMapping effect); double-sided
+  transparent materials need `forceSinglePass`; don't share one material across plain,
+  instanced and instance-coloured meshes.
+- Headless Chrome needs `--use-angle=gl --enable-gpu --ignore-gpu-blocklist` for the real
+  GPU (default SwiftShader is ~10× slower).
+- The HQ top bar is tight at 1440 px: keep chips short and `whitespace-nowrap`.
+
+## Shell
+- Don't use `pkill -f <pattern>` (it matches your own shell); kill by PID from
+  `ss -ltnp`.
+- `sqlite3` CLI isn't installed; copy DBs with Python's `sqlite3` `backup()`.
+- Department names differ from keys (e.g. `engineering` = "Software Engineering").
