@@ -12,6 +12,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.ai import ai_status_for_health
+from app.api.voice import voice_status_for_health
 from app.core.config import APP_VERSION, Settings
 from app.core.logging import get_logger
 from app.db.migrations import get_migration_state
@@ -91,6 +92,10 @@ async def ready(request: Request, response: Response) -> Readiness:
     ai_status, ai_detail, ai_data = ai_status_for_health(ai_cfg, settings)
     components["ai_provider"] = Component(
         status=ai_status, critical=False, detail=ai_detail, data=ai_data
+    )
+    voice_status, voice_detail, voice_data = voice_status_for_health(request.app.state.voice)
+    components["voice"] = Component(
+        status=voice_status, critical=False, detail=voice_detail, data=voice_data
     )
     # Integrations that do not exist yet are reported honestly, never as "ok".
     components["email"] = Component(

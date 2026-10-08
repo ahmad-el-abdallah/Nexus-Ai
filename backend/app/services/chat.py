@@ -206,7 +206,16 @@ class ChatService:
                 turn = {"role": "assistant", "content": text}
             else:
                 parts = [m.content] if m.content else []
-                parts += [format_attachment(a) for a in attachments.get(m.id, [])]
+                files = attachments.get(m.id, [])
+                if m.input_mode == "voice":
+                    # The recording is the source of the transcript, not a document.
+                    files = [a for a in files if not a.content_type.startswith("audio/")]
+                    parts.insert(
+                        0,
+                        "[Voice message, transcribed automatically and reviewed by the owner; "
+                        "it may still contain recognition errors.]",
+                    )
+                parts += [format_attachment(a) for a in files]
                 turn = {"role": "user", "content": "\n\n".join(parts)}
             considered += 1
             if picked and (
@@ -242,6 +251,9 @@ class ChatService:
                 f"Only the most recent {len(picked)} of {total} messages are included; "
                 "say so if you need something from earlier."
             )
+        lines.append(
+            "Reply in the language of the owner's latest message (for example Arabic or English)."
+        )
         lines.append(
             "You cannot start or execute tasks yourself yet. If the owner asks for work, "
             "answer with your plan or draft; the owner can record any message as a task."

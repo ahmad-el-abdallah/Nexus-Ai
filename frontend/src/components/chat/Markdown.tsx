@@ -22,7 +22,7 @@ const components: Components = {
 /** Renders Markdown safely: raw HTML is dropped and unsafe URLs are removed by react-markdown. */
 export const Markdown = memo(function Markdown({ text, streaming = false }: { text: string; streaming?: boolean }) {
   return (
-    <div className={`nx-markdown text-nx-text ${streaming ? "nx-caret" : ""}`}>
+    <div dir="auto" className={`nx-markdown text-nx-text ${streaming ? "nx-caret" : ""}`}>
       <ReactMarkdown remarkPlugins={[remarkGfm]} skipHtml components={components}>
         {text}
       </ReactMarkdown>

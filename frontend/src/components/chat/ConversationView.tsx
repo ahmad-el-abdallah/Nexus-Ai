@@ -4,12 +4,16 @@ import Link from "next/link";
 import { type ChangeEvent, type FormEvent, type KeyboardEvent, useEffect, useLayoutEffect, useRef, useState } from "react";
 
 import { Initials } from "@/components/hq/people";
+import { useChatVoice } from "@/components/voice/useChatVoice";
 import { attachmentUrl, type Conversation, formatBytes, MAX_FILE_BYTES, MAX_FILES, type Message, type ReplyState } from "@/lib/chat";
 import { type Addressee, responderFor } from "@/lib/routing";
+import { speechPlayer } from "@/lib/speech";
+import { installed } from "@/lib/voice";
 import { STATUS_META } from "@/world/characters/status";
 import { useChatStore } from "@/world/state/chatStore";
 import { useDepartmentStore } from "@/world/state/departmentStore";
 import { useEmployeeStore } from "@/world/state/employeeStore";
+import { useVoiceStore } from "@/world/state/voiceStore";
 
 import { TargetAvatar, useTargetName } from "./ConversationList";
 import { Markdown } from "./Markdown";
@@ -61,6 +65,8 @@ function MessageItem({
   onRetry,
   busy,
   highlight,
+  speaking,
+  canListen,
 }: {
   m: Message;
   state: ReplyState | null;
@@ -69,6 +75,9 @@ function MessageItem({
   onRetry: () => void;
   busy: boolean;
   highlight: boolean;
+  /** This message is being read aloud ("loading" | "speaking") or not. */
+  speaking: string | null;
+  canListen: boolean;
 }) {
   const departmentName = useDepartmentStore((s) => s.departments.find((d) => d.key === m.author_department)?.name);
   const [copied, setCopied] = useState(false);
@@ -91,17 +100,35 @@ function MessageItem({
           {copied ? "Copied" : "Copy"}
         </button>
       )}
+      {m.role === "agent" && m.status === "complete" && canListen && (
+        <button
+          type="button"
+          onClick={() => (speaking ? speechPlayer.stop() : void speechPlayer.play(m.id))}
+          className={speaking ? "text-nx-cyan" : "hover:text-nx-cyan"}
+          aria-label={speaking ? "Stop reading aloud" : "Listen to this reply"}
+        >
+          {speaking === "loading" ? "Preparing audio…" : speaking ? "■ Stop" : "▶ Listen"}
+        </button>
+      )}
     </div>
   );
+  const audio = m.input_mode === "voice" ? m.attachments.find((a) => a.content_type.startsWith("audio/")) : undefined;
+  const files = m.attachments.filter((a) => a !== audio);
 
   if (m.role === "owner") {
     return (
       <li className={`group flex flex-col items-end ${highlight ? "nx-highlight" : ""}`} data-testid="message" data-role="owner" id={`message-${m.id}`}>
         <div className="max-w-[min(42rem,88%)] rounded-2xl rounded-br-md bg-nx-violet/20 px-4 py-2.5 ring-1 ring-nx-violet/40">
+          {m.input_mode === "voice" && (
+            <p className="mb-1 text-[11px] font-medium text-nx-cyan" data-testid="voice-badge">
+              🎙️ Voice message · transcript
+            </p>
+          )}
           {m.content && <Markdown text={m.content} />}
-          {m.attachments.length > 0 && (
+          {audio && <audio controls preload="none" src={`${attachmentUrl(audio.id)}?play=1`} className="mt-2 h-8 w-64 max-w-full" aria-label="Play the recording" />}
+          {files.length > 0 && (
             <ul className="mt-2 flex flex-wrap gap-1.5" aria-label="Attachments">
-              {m.attachments.map((a) => (
+              {files.map((a) => (
                 <li key={a.id}>
                   <a href={attachmentUrl(a.id)} download={a.filename} className="inline-flex items-center gap-1.5 rounded-lg bg-black/25 px-2 py-1 text-xs text-nx-text ring-1 ring-white/10 hover:ring-nx-cyan/50">
                     <span aria-hidden>📎</span>
@@ -205,6 +232,16 @@ export function ConversationView({
   const responder = responderFor(conversation ? { kind: conversation.kind, employee_id: conversation.employee_id, department: conversation.department } : target, employees, departments);
   const list = messages ?? NO_MESSAGES;
   const streaming = list.some((m) => m.status === "streaming") || Boolean(reply);
+  const submitRef = useRef<() => Promise<void>>(async () => {});
+  const voice = useChatVoice({
+    conversationId: id,
+    messages: list,
+    text,
+    setText,
+    submit: () => void submitRef.current(),
+    canSend: !responder.unavailable && !streaming && !sending,
+  });
+  const ttsReady = useVoiceStore((s) => installed(s.overview, "tts"));
 
   // Follow new text while the owner is at the bottom; leave them alone if they scrolled up.
   useLayoutEffect(() => {
@@ -233,26 +270,34 @@ export function ConversationView({
     setSending(true);
     setError(null);
     stick.current = true;
+    const spoken = voice.voicePayload();
+    const all = [...files, ...spoken.files];
     try {
       const store = useChatStore.getState();
       if (id) {
-        await store.send({ conversationId: id }, text, files);
+        await store.send({ conversationId: id }, text, all, spoken.inputMode);
       } else {
         const created = await store.send(
           { target: target.kind === "employee" ? { kind: "employee", employee_id: target.employee_id! } : { kind: "department", department: target.department! } },
           text,
-          files,
+          all,
+          spoken.inputMode,
         );
         onCreated(created);
       }
       setText("");
       setFiles([]);
+      voice.clearDraft();
     } catch (err) {
       setError((err as Error).message);
     } finally {
       setSending(false);
     }
   };
+
+  useEffect(() => {
+    submitRef.current = () => submit();
+  });
 
   const onKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
@@ -377,6 +422,8 @@ export function ConversationView({
               isLast={i === list.length - 1}
               busy={streaming}
               highlight={m.id === highlightMessage}
+              speaking={voice.speech.messageId === m.id ? voice.speech.status : null}
+              canListen={ttsReady}
               onRetry={() => id && void act(() => useChatStore.getState().retry(id))}
               onTask={(msg) =>
                 id &&
@@ -400,6 +447,8 @@ export function ConversationView({
           </p>
         ) : (
           <>
+            {voice.sessionBar}
+            {voice.draftChip}
             {files.length > 0 && (
               <ul className="mb-2 flex flex-wrap gap-1.5" aria-label="Files to send">
                 {files.map((f, i) => (
@@ -420,11 +469,14 @@ export function ConversationView({
               <button type="button" onClick={() => fileInput.current?.click()} className="h-10 shrink-0 rounded-lg px-3 text-sm text-nx-muted ring-1 ring-nx-line-strong hover:text-nx-text" aria-label="Attach files">
                 📎
               </button>
+              {voice.micButton}
+              {voice.sessionButton}
               <textarea
+                dir="auto"
                 value={text}
                 onChange={(e) => setText(e.target.value)}
                 onKeyDown={onKeyDown}
-                rows={Math.min(8, Math.max(1, text.split("\n").length))}
+                rows={Math.min(8, Math.max(1, text.split("\n").reduce((n, line) => n + Math.max(1, Math.ceil(line.length / 70)), 0)))}
                 maxLength={16000}
                 placeholder={responder.employee ? `Message ${target.kind === "department" || conversation?.kind === "department" ? targetName : responder.employee.name.split(" ")[0]}…` : "Message…"}
                 aria-label="Message"
@@ -441,11 +493,16 @@ export function ConversationView({
               )}
             </div>
             <p className="mt-1.5 text-[10px] text-nx-faint">
-              Enter to send · Shift+Enter for a new line · up to {MAX_FILES} files, {formatBytes(MAX_FILE_BYTES)} each ·{" "}
+              Enter to send · Shift+Enter for a new line · 🎙️ voice message · 🎧 voice session · up to {MAX_FILES} files, {formatBytes(MAX_FILE_BYTES)} each ·{" "}
               <Link href="/settings/ai" className="hover:text-nx-muted">
                 usage &amp; limits
+              </Link>{" "}
+              ·{" "}
+              <Link href="/settings/voice" className="hover:text-nx-muted">
+                voice settings
               </Link>
             </p>
+            {voice.messages}
           </>
         )}
         {error && (

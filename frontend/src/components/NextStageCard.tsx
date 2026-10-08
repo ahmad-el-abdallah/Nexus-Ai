@@ -1,6 +1,13 @@
 import { CURRENT_STAGE, STAGES } from "@/lib/stages";
 
 const NEXT_STAGE_SCOPE: Record<number, string[]> = {
+  8: [
+    "CEO delegation to department supervisors and workers",
+    "Structured tasks with dependencies, reviews and retries",
+    "Interdepartment communication and owner approval checkpoints",
+    "Cancellable workflows with hard limits — no infinite agent loops",
+    "A real multi-department task, consolidated and reported",
+  ],
   7: [
     "Microphone controls and speech-to-text with a transcript preview",
     "Voice messages to employees and spoken replies",

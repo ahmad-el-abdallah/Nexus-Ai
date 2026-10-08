@@ -135,6 +135,24 @@ docs/      architecture, development, stages, ADRs, design references
   tests never call NVIDIA: unit tests use `httpx.MockTransport`, e2e uses
   `backend/tests/fake_provider.py`.
 
+## Voice
+
+- **Install models** in Settings → Voice (or `POST /api/voice/models/{id}/install`).
+  They are downloaded once from Hugging Face at a pinned revision, verified by SHA-256,
+  and stored in `backend/var/voice/` (`NEXUS_VOICE_DIR`). Remove them there or with the
+  Remove button.
+- **API:** `GET /api/voice`, `PATCH /api/voice/settings`,
+  `POST /api/voice/transcribe` (multipart `audio`, optional `language` auto|en|ar),
+  `GET /api/voice/messages/{id}/speech` (what would be read aloud, in parts),
+  `POST /api/voice/speak` (`{text, language?, employee_id?}` → WAV),
+  `GET /api/attachments/{id}?play=1` (voice recordings, inline).
+- The microphone only works on a secure page: `http://localhost` or HTTPS (not a LAN IP
+  over plain HTTP).
+- **Tests:** e2e sets `NEXUS_VOICE_FAKE=1` (stand-in engines, test env only) and runs
+  Chrome with a fake microphone. To run the real round-trip test, point
+  `NEXUS_TEST_VOICE_MODELS` at a folder of installed models, e.g.
+  `NEXUS_TEST_VOICE_MODELS=var/voice uv run pytest -k real`.
+
 ## Database and migrations
 
 - Models live in `backend/app/models/`. Import each new model module in

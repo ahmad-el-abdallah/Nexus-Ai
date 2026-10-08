@@ -6,6 +6,7 @@ import { useEffect, useState } from "react";
 import { AppShell } from "@/components/org/AppShell";
 import { type Addressee, chatHref, parseTarget } from "@/lib/routing";
 import { startChatSync, useChatStore } from "@/world/state/chatStore";
+import { startVoiceSync } from "@/world/state/voiceStore";
 
 import { ConversationList } from "./ConversationList";
 import { ConversationView } from "./ConversationView";
@@ -30,9 +31,16 @@ export function ChatPage() {
 
   useEffect(() => {
     const stop = startChatSync();
+    const stopVoice = startVoiceSync();
     void useChatStore.getState().loadConversations();
-    return stop;
+    return () => {
+      stop();
+      stopVoice();
+    };
   }, []);
+
+  // A new conversation keeps the same view (and any voice session) once created.
+  const [inherited, setInherited] = useState<Record<string, string>>({});
 
   const [missingId, setMissingId] = useState<string | null>(null);
   useEffect(() => {
@@ -48,6 +56,11 @@ export function ChatPage() {
   }, [activeId, conversation, listLoad]);
 
   const go = (query: string) => router.replace(`/chat${query}`, { scroll: false });
+  const created = (id: string) => {
+    const from = params.get("to");
+    if (from) setInherited((m) => ({ ...m, [id]: from }));
+    select(id);
+  };
   const select = (id: string) => {
     const match = useChatStore.getState().conversations.find((c) => c.id === id)?.match;
     go(`?c=${id}${match?.message_id ? `&m=${match.message_id}` : ""}`);
@@ -69,7 +82,7 @@ export function ChatPage() {
         <main className={`min-w-0 flex-1 flex-col ${showView || picking ? "flex" : "hidden lg:flex"}`}>
           {activeId && conversation ? (
             <ConversationView
-              key={activeId}
+              key={inherited[activeId] ?? activeId}
               conversation={conversation}
               target={{ kind: conversation.kind, employee_id: conversation.employee_id, department: conversation.department }}
               onCreated={select}
@@ -78,7 +91,7 @@ export function ChatPage() {
               highlightMessage={highlight}
             />
           ) : target ? (
-            <ConversationView key={params.get("to")} conversation={null} target={target} onCreated={select} onDeleted={() => go("")} onBack={() => go("")} highlightMessage={null} />
+            <ConversationView key={params.get("to")} conversation={null} target={target} onCreated={created} onDeleted={() => go("")} onBack={() => go("")} highlightMessage={null} />
           ) : missing ? (
             <p className="p-6 text-sm text-nx-muted">That conversation doesn&apos;t exist (it may have been deleted).</p>
           ) : activeId ? (

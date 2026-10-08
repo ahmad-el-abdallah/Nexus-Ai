@@ -1,6 +1,6 @@
 /** The approved 16-stage build plan. This is the plan, not a progress metric. */
 
-export const CURRENT_STAGE = 6;
+export const CURRENT_STAGE = 7;
 
 export const STAGES: ReadonlyArray<{ id: number; title: string }> = [
   { id: 1, title: "Foundation & architecture" },

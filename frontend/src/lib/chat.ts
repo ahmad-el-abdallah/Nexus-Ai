@@ -26,6 +26,8 @@ export interface Message {
   author_role: string | null;
   author_department: string | null;
   content: string;
+  /** "voice": content is the owner-reviewed transcript of a recording. */
+  input_mode?: "text" | "voice";
   status: MessageStatus;
   error: string | null;
   error_kind: string | null;
@@ -89,9 +91,10 @@ export const fetchMessages = (id: string) => request<Message[]>(`/api/conversati
 export const stopReply = (id: string) => request<{ stopped: boolean }>(`/api/conversations/${id}/stop`, { method: "POST" });
 export const retryReply = (id: string) => request<Message>(`/api/conversations/${id}/reply`, { method: "POST" });
 
-export function sendMessage(id: string, content: string, files: File[] = []) {
+export function sendMessage(id: string, content: string, files: File[] = [], inputMode: "text" | "voice" = "text") {
   const form = new FormData();
   form.append("content", content);
+  form.append("input_mode", inputMode);
   for (const file of files) form.append("files", file, file.name);
   return request<{ message: Message; reply: Message | null }>(`/api/conversations/${id}/messages`, { method: "POST", body: form });
 }

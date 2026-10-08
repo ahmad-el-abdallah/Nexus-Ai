@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { type FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { AppShell } from "@/components/org/AppShell";
@@ -22,31 +21,8 @@ import {
 } from "@/lib/ai";
 
 import { Playground } from "./Playground";
-import { Badge, ghostBtn, input, labelCls, primaryBtn, Section, timeAgo } from "./ui";
+import { Badge, ghostBtn, input, labelCls, primaryBtn, Section, SettingsNav, timeAgo } from "./ui";
 import { UsageDashboard } from "./UsageDashboard";
-
-function SettingsNav() {
-  const items = [
-    { label: "AI providers", href: "/settings/ai", active: true },
-    { label: "Email accounts", note: "Stage 9" },
-    { label: "Company", note: "Stage 11" },
-  ];
-  return (
-    <nav aria-label="Settings sections" className="flex flex-wrap gap-2">
-      {items.map((i) =>
-        i.href ? (
-          <Link key={i.label} href={i.href} aria-current="page" className="rounded-lg bg-white/10 px-3 py-1.5 text-xs font-medium text-white">
-            {i.label}
-          </Link>
-        ) : (
-          <span key={i.label} className="rounded-lg px-3 py-1.5 text-xs text-nx-faint ring-1 ring-nx-line" title={`Arrives in ${i.note}`}>
-            {i.label} · {i.note}
-          </span>
-        ),
-      )}
-    </nav>
-  );
-}
 
 function modelBadge(m: AIModel) {
   if (!m.listed) return <Badge tone="neutral">No longer listed</Badge>;
@@ -95,7 +71,7 @@ export function AISettingsPage() {
           to any paid fallback.
         </>
       }
-      actions={<SettingsNav />}
+      actions={<SettingsNav current="/settings/ai" />}
     >
       {loadError && (
         <p role="alert" className="glass-solid p-4 text-sm text-nx-error">

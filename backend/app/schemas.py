@@ -51,6 +51,7 @@ class MessageOut(BaseModel):
     author_role: str | None
     author_department: str | None
     content: str
+    input_mode: str = "text"
     status: str
     error: str | None
     error_kind: str | None

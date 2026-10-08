@@ -13,6 +13,7 @@ from app.models.department import Department
 from app.models.employee import Employee, EmployeeStatus
 from app.models.system import SystemMetadata
 from app.models.task import Task, TaskStatus
+from app.models.voice import VoiceSettings
 
 __all__ = [
     "AIModel",
@@ -30,4 +31,5 @@ __all__ = [
     "SystemMetadata",
     "Task",
     "TaskStatus",
+    "VoiceSettings",
 ]

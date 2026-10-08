@@ -23,6 +23,8 @@ export const LIVE_EVENTS = [
   "message.token",
   "reply.state",
   "task.updated",
+  "voice.updated",
+  "voice.settings",
 ] as const;
 export type LiveEventType = (typeof LIVE_EVENTS)[number];
 

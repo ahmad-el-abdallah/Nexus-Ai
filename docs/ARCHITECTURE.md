@@ -36,7 +36,7 @@ flowchart LR
     web["Next.js frontend<br/>UI · 3D office · chat · voice"]
     api["FastAPI backend<br/>API · orchestration · gateways"]
     db[("SQLite / PostgreSQL")]
-    stt["Local speech<br/>whisper.cpp / Piper (optional)"]
+    stt["Local speech<br/>faster-whisper · Piper"]
   end
   nim["NVIDIA inference<br/>(build.nvidia.com / NIM)"]
   mail["Email providers<br/>Gmail · Microsoft 365 · SMTP/IMAP"]
@@ -80,6 +80,7 @@ flowchart LR
 | `src/features/*` | 4+ | *Planned.* Org chart, chat, voice, meetings, projects, email, settings |
 | `src/stores/` | 3+ | *Planned.* Client state (Zustand) hydrated from REST and patched by WS events |
 | `src/lib/events.ts` | 6 | One shared `EventSource` per tab; reconnects (and retries failed responses); tells listeners to reload after a reconnect |
+| `src/components/voice/`, `src/lib/{voice,recorder,speech}.ts`, `src/world/state/voiceStore.ts` | 7 | Settings → Voice, mic recording with levels/silence detection, transcript review, voice sessions, spoken replies |
 | `src/components/chat/`, `src/world/state/chatStore.ts` | 6 | Chat page, conversation list/search, Markdown messages, composer with attachments, task dialog, department task board; live event reducers |
 
 ### Backend (`backend/`, Python 3.12 · FastAPI · SQLAlchemy 2 async · Alembic)
@@ -95,7 +96,7 @@ flowchart LR
 | `app/services/org/` | 4 | *Planned.* Departments, roles, agents, hierarchy, desk assignment |
 | `app/services/ai/` | 5 | *Planned.* AI gateway: provider adapters, model catalog, routing, budgets, usage |
 | `app/services/chat.py`, `app/api/chat.py`, `app/api/tasks.py` | 6 | Conversations, routing to employee/department/CEO, background streaming replies, context, attachments, search, tasks |
-| `app/services/voice/` | 7 | *Planned.* Optional local STT/TTS adapters |
+| `app/voice/`, `app/api/voice.py` | 7 | Local speech: model catalogue (pinned + SHA-256), verified installs, faster-whisper transcription, Piper synthesis, speech text preparation |
 | `app/services/orchestration/` | 8 | *Planned.* Task state machine, scheduler, delegation, review gates |
 | `app/services/tools/` | 8, 15 | *Planned.* Tool gateway: allowlists, sandboxing, permission checks |
 | `app/services/email/` | 9 | *Planned.* Provider adapters, drafts, approval queue, idempotent sending |
@@ -407,6 +408,43 @@ cosmetic and is visibly distinct from work state.
   externally with `noopener noreferrer`, and remote images are shown as links, never
   loaded.
 
+### Voice communication (Stage 7)
+
+- **Everything runs on this computer.** Speech → text uses **faster-whisper** (Whisper
+  base by default, small optional; MIT); text → speech uses **Piper** (an English
+  multi-speaker voice with 904 speakers and an Arabic voice). No cloud speech service is
+  called and audio never leaves the machine. Browser speech APIs are deliberately not
+  used (Chrome's recognition uploads audio to Google).
+- **Models are installed by the owner** in Settings → Voice. Each model is pinned to a
+  Hugging Face commit and every file is checked against its size and SHA-256; a failed
+  or tampered download leaves nothing behind. Models live in `backend/var/voice/`
+  (`NEXUS_VOICE_DIR`), about 148 MB (Whisper base) + 79 MB (English) + 63 MB (Arabic).
+- **Voice messages:** the browser records (MediaRecorder, opus/webm) only while the mic
+  button is active; the backend decodes with PyAV to 16 kHz mono and transcribes
+  (VAD on, so silence isn't turned into invented text). The transcript appears in the
+  composer for **review before sending**. The message is stored with `input_mode=voice`
+  and the recording as an attachment (playable inline); the model is told it is a
+  reviewed transcript that may contain recognition errors. Routing is exactly as for
+  text.
+- **Spoken replies:** a reply is turned into speakable text (Markdown, code and links
+  removed), split into sentence groups and synthesised part by part, the next part
+  fetched while one plays. Each employee has their own English voice (speaker chosen
+  from `avatar_seed`); Arabic uses one voice. The language is detected per part.
+- **Voice sessions:** replies are read aloud; in hands-free mode the mic reopens after
+  each reply, stops after 1.5 s of silence, and the transcript is sent after a 3-second
+  countdown that editing the text cancels. Silence or an empty transcript pauses
+  listening, so the loop never runs on its own. Mute mic, mute voice (global setting)
+  and end are always available.
+- **Errors** are explained, never crashes: blocked permission, no device, device busy,
+  insecure page, unsupported browser, model not installed, too short/long, unreadable
+  audio. Text input always keeps working.
+- **Tests** use test-only stand-in engines (`NEXUS_VOICE_FAKE`, refused outside
+  `NEXUS_ENV=test`) and Chrome's fake microphone. An opt-in test
+  (`NEXUS_TEST_VOICE_MODELS`) runs a real Piper → Whisper round trip in both languages.
+- **Licences:** Whisper models MIT; LibriTTS-R voice data CC BY 4.0; the Arabic voice
+  follows its dataset's terms; the Piper engine (`piper-tts`) is GPL-3.0 — fine for
+  running NEXUS AI yourself, but relevant if the software is ever distributed.
+
 ### Performance budget and measurements
 
 
@@ -485,9 +523,10 @@ quality is intended for discrete GPUs.
 - **Local LLMs:** not practical on this hardware (no discrete GPU, 7.5 GB RAM). The
   architecture still supports a local OpenAI-compatible endpoint for stronger machines.
 - **Speech:**
-  - whisper.cpp (tiny/base models) and Piper TTS can run on this CPU, with modest latency.
-  - Browser speech APIs vary by browser, and some send audio to the vendor's servers.
-    Stage 7 will detect this and disclose it in the UI.
+  - Measured in Stage 7 on this CPU: faster-whisper base transcribes a short message in
+    1–2.5 s (small: 4–8.5 s); Piper speaks at ~0.1–0.15 s of compute per second of audio.
+  - Browser speech APIs are **not** used: Chrome's recognition sends audio to Google.
+    Everything runs locally instead.
 - **Email:** Gmail and Microsoft 365 OAuth require the owner to register an OAuth
   client with each provider. SMTP/IMAP works with app passwords where the provider
   allows them.

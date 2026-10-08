@@ -15,13 +15,14 @@ from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import text
 
 from app.ai.gateway import AIGateway
-from app.api import ai, chat, departments, employees, events, health, tasks
+from app.api import ai, chat, departments, employees, events, health, tasks, voice
 from app.core.config import APP_VERSION, Settings, get_settings
 from app.core.events import EventBus, install_shutdown_hook
 from app.core.logging import configure_logging, get_logger
 from app.core.middleware import RequestContextMiddleware
 from app.db.session import Database
 from app.services.chat import ChatService
+from app.voice.service import VoiceService
 
 log = get_logger("nexus.app")
 install_shutdown_hook()
@@ -38,9 +39,11 @@ async def _schema_ready(database: Database) -> bool:
 
 
 def create_app(
-    settings: Settings | None = None, ai_transport: httpx.AsyncBaseTransport | None = None
+    settings: Settings | None = None,
+    ai_transport: httpx.AsyncBaseTransport | None = None,
+    voice_transport: httpx.AsyncBaseTransport | None = None,
 ) -> FastAPI:
-    """`ai_transport` lets tests replace the network with a fake provider."""
+    """The transports let tests replace the network (AI provider, model downloads)."""
     settings = settings or get_settings()
     configure_logging(settings.log_level, settings.log_format)
 
@@ -51,6 +54,7 @@ def create_app(
         app.state.ai = AIGateway(app.state.db, settings, transport=ai_transport)
         app.state.events = EventBus()
         app.state.chat = ChatService(app.state.db, app.state.ai, app.state.events)
+        app.state.voice = VoiceService(settings, app.state.events, transport=voice_transport)
         app.state.started_at = datetime.now(UTC)
         log.info(
             "app.startup",
@@ -69,6 +73,7 @@ def create_app(
         finally:
             app.state.events.close()
             await app.state.chat.shutdown()
+            await app.state.voice.shutdown()
             await app.state.db.dispose()
             log.info("app.shutdown")
 
@@ -95,4 +100,5 @@ def create_app(
     app.include_router(chat.router)
     app.include_router(tasks.router)
     app.include_router(events.router)
+    app.include_router(voice.router)
     return app

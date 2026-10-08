@@ -9,6 +9,8 @@ const FAKE_AI_KEY = "fake-e2e-key-0123456789abcdef";
 // Render with the machine's GPU through ANGLE/OpenGL; headless Chrome would
 // otherwise use the much slower SwiftShader software renderer.
 const GPU_ARGS = process.env.E2E_SOFTWARE_GL ? [] : ["--use-angle=gl", "--enable-gpu", "--ignore-gpu-blocklist"];
+// A fake microphone (a tone) with permission granted, so voice recording can run headless.
+const MIC_ARGS = ["--use-fake-ui-for-media-stream", "--use-fake-device-for-media-stream", "--autoplay-policy=no-user-gesture-required"];
 
 /**
  * End-to-end tests run against a production build in the locally installed
@@ -30,7 +32,7 @@ export default defineConfig({
   projects: [
     {
       name: "desktop",
-      use: { viewport: { width: 1440, height: 900 }, launchOptions: { args: GPU_ARGS } },
+      use: { viewport: { width: 1440, height: 900 }, launchOptions: { args: [...GPU_ARGS, ...MIC_ARGS] } },
       testIgnore: /(mobile|no-webgl)\.spec/,
     },
     { name: "mobile", use: { ...devices["Pixel 7"], channel: "chrome", launchOptions: { args: GPU_ARGS } }, testMatch: /mobile\.spec/ },
@@ -59,6 +61,9 @@ export default defineConfig({
         NEXUS_LOG_LEVEL: "WARNING",
         NVIDIA_API_KEY: FAKE_AI_KEY,
         NVIDIA_BASE_URL: `http://127.0.0.1:${FAKE_AI_PORT}/v1`,
+        // Stand-in speech engines (allowed only with NEXUS_ENV=test): no 300 MB model downloads.
+        NEXUS_VOICE_FAKE: "1",
+        NEXUS_VOICE_DIR: `/tmp/nexus-e2e-voice-${API_PORT}`,
       },
       url: `http://127.0.0.1:${API_PORT}/api/health/ready`,
       timeout: 60_000,

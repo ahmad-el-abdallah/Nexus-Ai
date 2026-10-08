@@ -25,6 +25,7 @@ inference, email, speech) and strict security rules. Several constraints apply:
 | Logging | **structlog** with a redaction processor | Structured JSON for machines, readable console for humans, secrets masked centrally |
 | Config | **pydantic-settings**, secrets as `SecretStr` | Typed config; secrets can't leak through repr or serialization |
 | Frontend ↔ backend | Same-origin REST via Next `rewrites`; live updates as Server-Sent Events through the same proxy (Stage 6) | No CORS and no backend URL in the bundle. SSE is plain HTTP, so it passes through the rewrite unchanged; updates only flow server → client |
+| Speech (Stage 7) | **faster-whisper** (STT) + **Piper** (TTS), local, models installed on request | Free and private: audio never leaves the machine; English + Arabic; fast enough on this CPU (Whisper base 1–2.5 s per message). Browser speech APIs rejected because Chrome uploads audio to Google |
 | Tests | pytest + httpx ASGI; Vitest + Testing Library; bash smoke test | Fast, hermetic unit and integration tests, plus a real two-server boot check |
 
 ## Deferred decisions

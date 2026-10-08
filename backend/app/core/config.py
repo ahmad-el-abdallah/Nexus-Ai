@@ -59,6 +59,11 @@ class Settings(BaseSettings):
         default="https://integrate.api.nvidia.com/v1", alias="NVIDIA_BASE_URL"
     )
 
+    # --- Voice (Stage 7): local speech models live here, downloaded on request -
+    voice_dir: Path = Field(default=BACKEND_DIR / "var" / "voice", alias="NEXUS_VOICE_DIR")
+    # Test-only stand-in speech engines (refused outside NEXUS_ENV=test).
+    voice_fake: bool = Field(default=False, alias="NEXUS_VOICE_FAKE")
+
     @field_validator("cors_origins", mode="before")
     @classmethod
     def _split_origins(cls, value: object) -> object:

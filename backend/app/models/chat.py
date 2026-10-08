@@ -66,6 +66,10 @@ class Message(Base):
     author_role: Mapped[str | None] = mapped_column(String(120), nullable=True)
     author_department: Mapped[str | None] = mapped_column(String(40), nullable=True)
     content: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    # "text" or "voice" (content is then the owner-reviewed transcript).
+    input_mode: Mapped[str] = mapped_column(
+        String(8), nullable=False, default="text", server_default="text"
+    )
     status: Mapped[str] = mapped_column(String(16), nullable=False)
     error: Mapped[str | None] = mapped_column(Text, nullable=True)
     error_kind: Mapped[str | None] = mapped_column(String(40), nullable=True)

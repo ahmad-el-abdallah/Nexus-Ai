@@ -83,6 +83,17 @@ describe("SystemStatus", () => {
     expect(within(row("Company email")).getByText("Planned · Stage 9")).toBeInTheDocument();
   });
 
+  it("reports whether local voice models are installed", async () => {
+    mockBackend(
+      readiness({
+        voice: { status: "ok", detail: null, critical: false, data: { stt: ["whisper-base"], tts: ["piper-en", "piper-ar"], engine: "local" } },
+      }),
+    );
+    render(<SystemStatus />);
+    await screen.findByText("Operational");
+    expect(within(row("Voice · local")).getByText("Ready · whisper-base + 2 voice(s)")).toBeInTheDocument();
+  });
+
   it("shows a connected AI provider with its default model", async () => {
     mockBackend(
       readiness({

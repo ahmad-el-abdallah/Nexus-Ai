@@ -6,7 +6,7 @@ import mimetypes
 import posixpath
 import re
 from datetime import UTC, datetime
-from typing import Annotated
+from typing import Annotated, Literal
 from urllib.parse import quote
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile, status
@@ -300,14 +300,18 @@ async def send_message(
     chat: Chat,
     content: Annotated[str, Form(max_length=MAX_MESSAGE_CHARS)] = "",
     files: Annotated[list[UploadFile] | None, File()] = None,
+    input_mode: Annotated[Literal["text", "voice"], Form()] = "text",
 ) -> SendResult:
-    """Stores the owner's message (multipart: `content` + optional `files`) and
-    starts the reply. The reply streams over /api/events."""
+    """Stores the owner's message (multipart: `content` + optional `files`;
+    `input_mode=voice` when `content` is a reviewed transcript, usually with the
+    recording attached) and starts the reply. The reply streams over /api/events."""
     conversation = await _conversation(session, conversation_id)
     uploads = files or []
     text = content.strip()
     if not text and not uploads:
         raise HTTPException(422, "Write a message or attach a file.")
+    if input_mode == "voice" and not text:
+        raise HTTPException(422, "A voice message needs its transcript.")
     if len(uploads) > MAX_FILES:
         raise HTTPException(422, f"Attach at most {MAX_FILES} files per message.")
     if chat.is_replying(conversation.id):
@@ -348,6 +352,7 @@ async def send_message(
         conversation_id=conversation.id,
         role=MessageRole.OWNER.value,
         content=text,
+        input_mode=input_mode,
         status=MessageStatus.COMPLETE.value,
         finished_at=datetime.now(UTC),
     )
@@ -399,17 +404,22 @@ async def stop_reply(conversation_id: str, session: Session, chat: Chat) -> dict
 # ------------------------------------------------------------- attachments
 
 
+PLAYABLE_AUDIO = {"audio/webm", "audio/ogg", "audio/wav", "audio/x-wav", "audio/mpeg", "audio/mp4"}
+
+
 @router.get("/attachments/{attachment_id}")
-async def download_attachment(attachment_id: str, session: Session) -> Response:
-    """Always served as a download, never rendered by the browser."""
+async def download_attachment(attachment_id: str, session: Session, play: bool = False) -> Response:
+    """Served as a download, never rendered by the browser. `?play=1` streams
+    recognised audio formats inline so voice messages can be played back."""
     attachment = await session.get(Attachment, attachment_id)
     if attachment is None:
         raise HTTPException(404, "Attachment not found")
+    inline = play and attachment.content_type in PLAYABLE_AUDIO
     return Response(
         attachment.data,
-        media_type="application/octet-stream",
+        media_type=attachment.content_type if inline else "application/octet-stream",
         headers={
-            "Content-Disposition": f"attachment; filename*=UTF-8''{quote(attachment.filename)}",
+            "Content-Disposition": f"{'inline' if inline else 'attachment'}; filename*=UTF-8''{quote(attachment.filename)}",
             "X-Content-Type-Options": "nosniff",
             "Content-Security-Policy": "sandbox; default-src 'none'",
             "Cache-Control": "private, no-store",

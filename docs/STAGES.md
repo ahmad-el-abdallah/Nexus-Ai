@@ -10,8 +10,8 @@ reported, and the next stage starts only after the owner's explicit approval.
 | 3 | AI employee characters | ✅ Approved |
 | 4 | Departments & organisational structure | ✅ Approved |
 | 5 | NVIDIA AI connection | ✅ Approved |
-| 6 | Text communication | ✅ Complete, awaiting approval for Stage 7 |
-| 7 | Voice communication | ⏳ Not started |
+| 6 | Text communication | ✅ Approved |
+| 7 | Voice communication | ✅ Complete, awaiting approval for Stage 8 |
 | 8 | Multi-agent task orchestration | ⏳ Not started |
 | 9 | Email integration | ⏳ Not started |
 | 10 | Employee profiles & ratings | ⏳ Not started |
@@ -175,3 +175,45 @@ reported, and the next stage starts only after the owner's explicit approval.
 Three real requests on `nvidia/nemotron-3-super-120b-a12b`: Marketing → Elena Rossi
 (first token 898 ms, 3.2 s total), Software Engineering → Iris Wong (860 ms, 1.6 s),
 CEO → Aria Vance (698 ms, 2.8 s). Each reply introduced the right person and department.
+
+---
+
+## Stage 7 — Voice communication
+
+**Completed:** 2026-10-08 · **Commit:** "Stage 7: voice communication"
+
+### Acceptance criteria
+
+| Criterion | Result | Evidence |
+| --- | --- | --- |
+| Voice input transcribes | PASS | Real: Chrome mic fed a recorded sentence → Whisper base, 6.5 s of audio in ~1.2 s (English and Arabic); e2e with stand-in engines |
+| Transcript reaches the correct employee | PASS | Voice message to Marketing answered by Elena Rossi (real NVIDIA); backend + e2e tests; same routing code as text |
+| Agent responds | PASS | Real replies from Elena Rossi (English and Arabic) and Iris Wong (hands-free session) |
+| Speech output works when configured | PASS | Real Piper speech for replies (English voice per employee, Arabic voice); e2e checks the WAV responses |
+| Text remains a working fallback | PASS | e2e: with the microphone blocked, typing and sending still work |
+| Missing microphone permission doesn't crash | PASS | e2e (NotAllowedError) + unit tests for every getUserMedia failure; no page errors |
+
+### Deliverables
+
+- Local speech: faster-whisper (Whisper base/small) and Piper (English with 904 voices,
+  Arabic), installed from Settings → Voice. Each model is pinned to a revision and
+  verified by SHA-256. A real install of base + both voices (~290 MB) took 24 s.
+- Chat: mic button → transcript for review → sent as a voice message with the
+  recording attached and playable. "Listen" on replies. Voice sessions read replies
+  aloud and, hands-free, listen again and auto-send after a cancellable 3-second
+  countdown. Mic mute, voice mute, end session. Arabic and English with right-to-left
+  display.
+- Settings → Voice: install or remove models with progress, recognition model choice,
+  language (auto/English/Arabic), read replies aloud, mute all, speaking speed,
+  microphone test with timings, voice previews per employee.
+- System status shows the local voice state. Migration `0006_voice`.
+- `./start.sh` runs the backend and frontend together in one terminal.
+
+### Measured on this computer (CPU only)
+
+| Step | Time |
+| --- | --- |
+| Whisper base, 2.8–6.8 s clip | 1.0–2.4 s |
+| Whisper small, same clips | 4.0–8.5 s |
+| Piper, per second of speech | ~0.1–0.15 s |
+| First spoken part of a reply (UI) | 1.1 s (English), 2.6 s (Arabic) |

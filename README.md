@@ -7,16 +7,26 @@ interactive 3D headquarters. Every department, employee, desk and meeting room m
 real system functionality: real tasks, real model calls, real approvals. Nothing on
 screen is simulated.
 
-> **Status: Stage 6 of 16 — Text communication.** Chat with the CEO, any department or
-> any employee in **Chat**: replies stream from each employee's routed NVIDIA model, are
-> saved and searchable, can carry file attachments and can be turned into tasks. Routing
-> is enforced by the backend, and the office updates live (employees type at their desks
-> while replying). Voice arrives in Stage 7. See [`docs/STAGES.md`](docs/STAGES.md).
+> **Status: Stage 7 of 16 — Voice communication.** Talk to the CEO, departments and
+> employees by voice in **Chat**: speech is transcribed on this computer (Whisper), you
+> review the transcript, and replies can be read aloud in each employee's own voice
+> (Piper) — English and Arabic. Install the speech models once in **Settings → Voice**.
+> Text chat, search, attachments and tasks from Stage 6 keep working. See
+> [`docs/STAGES.md`](docs/STAGES.md).
 
 ## Quick start
 
 Prerequisites: **Node.js 20.9+**, **uv** ([install](https://docs.astral.sh/uv/getting-started/installation/)),
 `make`, and Linux or macOS. Python 3.12 is managed by uv.
+
+**One command, one terminal:**
+
+```bash
+./start.sh   # first run installs everything; then backend :8000 + frontend :3000 together
+```
+
+Logs from both servers appear in that terminal (prefixed `[api]` / `[web]`); press
+**Ctrl-C** once to stop both. The same thing step by step:
 
 ```bash
 make setup   # install dependencies, create .env files (generates a local secret key), migrate DB

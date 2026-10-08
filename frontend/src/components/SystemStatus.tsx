@@ -49,6 +49,7 @@ export function buildRows(state: SystemStatusState): Row[] {
       { label: "Database", value: unknown, tone: "neutral" },
       { label: "Schema migrations", value: unknown, tone: "neutral" },
       { label: "AI provider · NVIDIA", value: unknown, tone: "neutral" },
+      { label: "Voice · local", value: unknown, tone: "neutral" },
       { label: "Company email", value: unknown, tone: "neutral" },
     ];
   }
@@ -58,6 +59,7 @@ export function buildRows(state: SystemStatusState): Row[] {
   const migrations = components.migrations;
   const ai = components.ai_provider;
   const email = components.email;
+  const voice = components.voice;
   const dialect = DIALECTS[String(db?.data.dialect)] ?? String(db?.data.dialect ?? "");
 
   return [
@@ -95,6 +97,17 @@ export function buildRows(state: SystemStatusState): Row[] {
                   : plannedValue(ai),
       detail: ai?.detail ?? undefined,
       tone: ai?.status === "configured" || ai?.status === "not_configured" ? "neutral" : componentTone(ai),
+    },
+    {
+      label: "Voice · local",
+      value:
+        voice?.status === "ok"
+          ? `Ready · ${(voice.data.stt as string[]).join(", ")}${(voice.data.tts as string[]).length ? ` + ${(voice.data.tts as string[]).length} voice(s)` : " · no voices"}`
+          : voice?.status === "not_configured"
+            ? "No speech model installed"
+            : "Unknown",
+      detail: voice?.detail ?? undefined,
+      tone: voice?.status === "ok" ? "ok" : "neutral",
     },
     {
       label: "Company email",

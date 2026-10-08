@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import type { ReactNode } from "react";
 
 export const card = "glass-solid p-5";
@@ -42,4 +43,34 @@ export function timeAgo(iso: string | null): string {
   if (s < 3600) return `${Math.round(s / 60)} min ago`;
   if (s < 86400) return `${Math.round(s / 3600)} h ago`;
   return `${Math.round(s / 86400)} days ago`;
+}
+
+const SETTINGS_SECTIONS: { label: string; href?: string; note?: string }[] = [
+  { label: "AI providers", href: "/settings/ai" },
+  { label: "Voice", href: "/settings/voice" },
+  { label: "Email accounts", note: "Stage 9" },
+  { label: "Company", note: "Stage 11" },
+];
+
+export function SettingsNav({ current }: { current: string }) {
+  return (
+    <nav aria-label="Settings sections" className="flex flex-wrap gap-2">
+      {SETTINGS_SECTIONS.map((i) =>
+        i.href ? (
+          <Link
+            key={i.label}
+            href={i.href}
+            aria-current={i.href === current ? "page" : undefined}
+            className={`rounded-lg px-3 py-1.5 text-xs font-medium ${i.href === current ? "bg-white/10 text-white" : "text-nx-muted ring-1 ring-nx-line-strong hover:text-nx-text"}`}
+          >
+            {i.label}
+          </Link>
+        ) : (
+          <span key={i.label} className="rounded-lg px-3 py-1.5 text-xs text-nx-faint ring-1 ring-nx-line" title={`Arrives in ${i.note}`}>
+            {i.label} · {i.note}
+          </span>
+        ),
+      )}
+    </nav>
+  );
 }
