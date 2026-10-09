@@ -63,9 +63,13 @@ async def test_female_employee_speaks_arabic_with_the_raised_voice(make_settings
 
 def test_agents_reply_only_in_english() -> None:
     sales = SimpleNamespace(name="Sales", description="Sells.", responsibilities=["Sell"])
-    eng = SimpleNamespace(name="Software Engineering", description="Builds.", responsibilities=["Build"])
+    eng = SimpleNamespace(
+        name="Software Engineering", description="Builds.", responsibilities=["Build"]
+    )
     seller = SimpleNamespace(name="Priya Nair", role="SDR", department="sales", gender="female")
-    engineer = SimpleNamespace(name="Felix Schmidt", role="Dev", department="engineering", gender="male")
+    engineer = SimpleNamespace(
+        name="Felix Schmidt", role="Dev", department="engineering", gender="male"
+    )
     for employee, dept in ((seller, sales), (engineer, eng)):
         text = system_prompt(employee, dept)  # type: ignore[arg-type]
         assert "always reply in English" in text
@@ -74,9 +78,13 @@ def test_agents_reply_only_in_english() -> None:
 
 
 def test_engineers_are_told_to_build_complete_tools() -> None:
-    eng = SimpleNamespace(name="Software Engineering", description="Builds.", responsibilities=["Build"])
+    eng = SimpleNamespace(
+        name="Software Engineering", description="Builds.", responsibilities=["Build"]
+    )
     sales = SimpleNamespace(name="Sales", description="Sells.", responsibilities=["Sell"])
-    engineer = SimpleNamespace(name="Felix Schmidt", role="Dev", department="engineering", gender=None)
+    engineer = SimpleNamespace(
+        name="Felix Schmidt", role="Dev", department="engineering", gender=None
+    )
     seller = SimpleNamespace(name="Priya Nair", role="SDR", department="sales", gender=None)
     eng_prompt = system_prompt(engineer, eng)  # type: ignore[arg-type]
     assert "build it fully and for real" in eng_prompt
