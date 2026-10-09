@@ -17,16 +17,23 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import Settings
 from app.models import (
+    App,
+    AppVersion,
     Department,
+    Employee,
     StorageEntry,
     StorageEntryKind,
     StorageEntryStatus,
     StorageEvent,
+    StorageGrant,
+    StorageGranteeKind,
+    StorageLink,
     StorageVersion,
     StorageVersionStatus,
     StorageWorkspace,
     StorageWorkspaceScope,
     StorageWorkspaceState,
+    Task,
 )
 from app.storage.errors import BlobLimitError, BlobMissingError, BlobUnsafeError, VaultError
 from app.storage.local import LocalBlobStore
@@ -45,6 +52,21 @@ class VaultDownload:
     stream: AsyncIterator[bytes]
 
 
+@dataclass(frozen=True)
+class StorageActor:
+    """Trusted internal identity used by storage policy checks."""
+
+    kind: str
+    name: str
+    employee_id: str | None = None
+    department_key: str | None = None
+
+
+OWNER_ACTOR = StorageActor(kind="owner", name="Owner")
+SYSTEM_ACTOR = StorageActor(kind="system", name="NEXUS storage service")
+PERMISSION_RANK = {"read": 1, "write": 2, "manage": 3}
+
+
 class VaultService:
     """The only layer allowed to coordinate storage metadata and blob bytes."""
 
@@ -55,10 +77,54 @@ class VaultService:
     async def initialize(self) -> None:
         await self.blobs.initialize()
 
-    async def workspaces(self, session: AsyncSession) -> list[dict[str, Any]]:
+    async def sync_workspaces(self, session: AsyncSession) -> int:
+        """Idempotently provision the company workspace and every live department."""
+        existing = set(await session.scalars(select(StorageWorkspace.id)))
+        wanted: list[StorageWorkspace] = []
+        if "ws_company" not in existing:
+            wanted.append(
+                StorageWorkspace(
+                    id="ws_company",
+                    scope=StorageWorkspaceScope.COMPANY.value,
+                    state=StorageWorkspaceState.ACTIVE.value,
+                )
+            )
+        for department_key in await session.scalars(select(Department.key)):
+            workspace_id = f"ws_department:{department_key}"
+            if workspace_id not in existing:
+                wanted.append(
+                    StorageWorkspace(
+                        id=workspace_id,
+                        scope=StorageWorkspaceScope.DEPARTMENT.value,
+                        department_key=department_key,
+                        state=StorageWorkspaceState.ACTIVE.value,
+                    )
+                )
+        if wanted:
+            session.add_all(wanted)
+            await self._commit_conflict(session, "Storage workspaces changed concurrently.")
+        return len(wanted)
+
+    async def actor_for_employee(self, session: AsyncSession, employee_id: str) -> StorageActor:
+        employee = await session.get(Employee, employee_id)
+        if employee is None:
+            raise VaultError(404, "Storage actor not found.")
+        return StorageActor(
+            kind="employee",
+            name=employee.name,
+            employee_id=employee.id,
+            department_key=employee.department,
+        )
+
+    async def workspaces(
+        self, session: AsyncSession, *, actor: StorageActor = OWNER_ACTOR
+    ) -> list[dict[str, Any]]:
+        await self.sync_workspaces(session)
         rows = list(await session.scalars(select(StorageWorkspace).order_by(StorageWorkspace.id)))
         result: list[dict[str, Any]] = []
         for workspace in rows:
+            if not await self._allowed(session, actor, workspace, "read"):
+                continue
             used = await self._usage(session, workspace.id)
             result.append(
                 {
@@ -68,9 +134,233 @@ class VaultService:
                     "state": workspace.state,
                     "used_bytes": used,
                     "quota_bytes": self._quota(workspace),
+                    "quota_override_bytes": workspace.quota_bytes,
                 }
             )
         return result
+
+    async def update_workspace(
+        self,
+        session: AsyncSession,
+        workspace_id: str,
+        *,
+        quota_bytes: int | object | None = UNSET,
+        state: str | None = None,
+        actor: StorageActor = OWNER_ACTOR,
+    ) -> dict[str, Any]:
+        workspace = await self._workspace(session, workspace_id)
+        await self._require(session, actor, workspace, "manage")
+        if quota_bytes is not UNSET:
+            assert quota_bytes is None or isinstance(quota_bytes, int)
+            if quota_bytes is not None and quota_bytes < await self._usage(session, workspace_id):
+                raise VaultError(409, "The quota cannot be lower than current storage usage.")
+            workspace.quota_bytes = quota_bytes
+        if state is not None:
+            if state not in {
+                StorageWorkspaceState.ACTIVE.value,
+                StorageWorkspaceState.READ_ONLY.value,
+            }:
+                raise VaultError(422, "Unknown storage workspace state.")
+            workspace.state = state
+        session.add(
+            self._workspace_event(
+                workspace_id,
+                "workspace_updated",
+                "Updated workspace quota or state.",
+                actor,
+                {"quota_bytes": workspace.quota_bytes, "state": workspace.state},
+            )
+        )
+        await session.commit()
+        return await self._workspace_view(session, workspace)
+
+    async def grants(
+        self,
+        session: AsyncSession,
+        workspace_id: str,
+        *,
+        actor: StorageActor = OWNER_ACTOR,
+    ) -> list[dict[str, Any]]:
+        workspace = await self._workspace(session, workspace_id)
+        await self._require(session, actor, workspace, "manage")
+        rows = await session.scalars(
+            select(StorageGrant)
+            .where(StorageGrant.workspace_id == workspace_id)
+            .order_by(StorageGrant.created_at, StorageGrant.id)
+        )
+        return [self._grant_view(row) for row in rows]
+
+    async def grant_access(
+        self,
+        session: AsyncSession,
+        workspace_id: str,
+        *,
+        grantee_kind: str,
+        grantee_id: str,
+        permission: str,
+        entry_id: str | None = None,
+        expires_at: datetime | None = None,
+        actor: StorageActor = OWNER_ACTOR,
+    ) -> dict[str, Any]:
+        workspace = await self._workspace(session, workspace_id)
+        await self._require(session, actor, workspace, "manage")
+        if grantee_kind not in {
+            StorageGranteeKind.EMPLOYEE.value,
+            StorageGranteeKind.DEPARTMENT.value,
+        }:
+            raise VaultError(422, "Unknown storage grantee kind.")
+        if permission not in PERMISSION_RANK:
+            raise VaultError(422, "Unknown storage permission.")
+        if entry_id:
+            entry = await self._entry(session, entry_id)
+            if entry.workspace_id != workspace_id:
+                raise VaultError(422, "The grant item must belong to this workspace.")
+        if grantee_kind == StorageGranteeKind.EMPLOYEE.value:
+            if await session.get(Employee, grantee_id) is None:
+                raise VaultError(422, "The grantee employee does not exist.")
+        elif await session.get(Department, grantee_id) is None:
+            raise VaultError(422, "The grantee department does not exist.")
+        if expires_at is not None:
+            if expires_at.tzinfo is None or expires_at.utcoffset() is None:
+                raise VaultError(422, "Grant expiry must include a timezone.")
+            if expires_at <= datetime.now(UTC):
+                raise VaultError(422, "Grant expiry must be in the future.")
+        duplicate = await session.scalar(
+            select(StorageGrant).where(
+                StorageGrant.workspace_id == workspace_id,
+                StorageGrant.entry_id == entry_id,
+                StorageGrant.grantee_kind == grantee_kind,
+                StorageGrant.grantee_id == grantee_id,
+                StorageGrant.permission == permission,
+                StorageGrant.revoked_at.is_(None),
+            )
+        )
+        if duplicate and (duplicate.expires_at is None or duplicate.expires_at > datetime.now(UTC)):
+            return self._grant_view(duplicate)
+        grant = StorageGrant(
+            id=self._id("stg"),
+            workspace_id=workspace_id,
+            entry_id=entry_id,
+            grantee_kind=grantee_kind,
+            grantee_id=grantee_id,
+            permission=permission,
+            granted_by_kind=actor.kind,
+            granted_by_employee_id=actor.employee_id,
+            granted_by_name=actor.name,
+            expires_at=expires_at,
+        )
+        session.add(grant)
+        session.add(
+            self._workspace_event(
+                workspace_id,
+                "access_granted",
+                f"Granted {permission} access to {grantee_kind} {grantee_id}.",
+                actor,
+                {"grant_id": grant.id, "entry_id": entry_id},
+            )
+        )
+        await session.commit()
+        await session.refresh(grant)
+        return self._grant_view(grant)
+
+    async def revoke_grant(
+        self,
+        session: AsyncSession,
+        grant_id: str,
+        *,
+        actor: StorageActor = OWNER_ACTOR,
+    ) -> dict[str, Any]:
+        grant = await session.get(StorageGrant, grant_id)
+        if grant is None:
+            raise VaultError(404, "Storage grant not found.")
+        workspace = await self._workspace(session, grant.workspace_id)
+        await self._require(session, actor, workspace, "manage")
+        if grant.revoked_at is None:
+            grant.revoked_at = datetime.now(UTC)
+            grant.revoked_by_kind = actor.kind
+            grant.revoked_by_employee_id = actor.employee_id
+            grant.revoked_by_name = actor.name
+            session.add(
+                self._workspace_event(
+                    grant.workspace_id,
+                    "access_revoked",
+                    f"Revoked storage grant {grant.id}.",
+                    actor,
+                    {"grant_id": grant.id},
+                )
+            )
+            await session.commit()
+        return self._grant_view(grant)
+
+    async def links(
+        self,
+        session: AsyncSession,
+        entry_id: str,
+        *,
+        actor: StorageActor = OWNER_ACTOR,
+    ) -> list[dict[str, Any]]:
+        entry = await self._entry(session, entry_id)
+        workspace = await self._workspace(session, entry.workspace_id)
+        await self._require(session, actor, workspace, "read", entry)
+        rows = await session.scalars(
+            select(StorageLink)
+            .where(StorageLink.entry_id == entry_id)
+            .order_by(StorageLink.created_at, StorageLink.id)
+        )
+        return [self._link_view(row) for row in rows]
+
+    async def link_entry(
+        self,
+        session: AsyncSession,
+        entry_id: str,
+        *,
+        target_type: str,
+        target_id: str,
+        relation: str,
+        label: str | None,
+        actor: StorageActor = OWNER_ACTOR,
+    ) -> dict[str, Any]:
+        entry = await self._entry(session, entry_id)
+        workspace = await self._workspace(session, entry.workspace_id, write=True)
+        await self._require(session, actor, workspace, "write", entry)
+        if not re.fullmatch(r"[a-z][a-z0-9_-]{0,31}", relation):
+            raise VaultError(422, "The artifact link relation is invalid.")
+        await self._validate_link_target(session, workspace, target_type, target_id)
+        version = await self._current_version(session, entry)
+        version_id = version.id if version else None
+        idempotency_key = ":".join(
+            [entry.id, version_id or "entry", target_type, target_id, relation]
+        )
+        existing = await session.scalar(
+            select(StorageLink).where(StorageLink.idempotency_key == idempotency_key)
+        )
+        if existing:
+            return self._link_view(existing)
+        link = StorageLink(
+            id=self._id("stl"),
+            entry_id=entry.id,
+            version_id=version_id,
+            target_type=target_type,
+            target_id=target_id,
+            relation=relation,
+            label=label.strip() if label and label.strip() else None,
+            idempotency_key=idempotency_key,
+        )
+        session.add(link)
+        session.add(
+            self._event(
+                entry.workspace_id,
+                entry,
+                "artifact_linked",
+                f"Linked {entry.name} to {target_type} {target_id}.",
+                actor=actor,
+                version=version,
+                details={"link_id": link.id, "target_type": target_type, "target_id": target_id},
+            )
+        )
+        await self._commit_conflict(session, "This artifact link already exists.")
+        await session.refresh(link)
+        return self._link_view(link)
 
     async def entries(
         self,
@@ -79,12 +369,15 @@ class VaultService:
         parent_id: str | None,
         *,
         trashed: bool,
+        actor: StorageActor = OWNER_ACTOR,
     ) -> list[dict[str, Any]]:
-        await self._workspace(session, workspace_id)
+        workspace = await self._workspace(session, workspace_id)
+        parent: StorageEntry | None = None
         if parent_id is not None:
             parent = await self._entry(session, parent_id)
             if parent.workspace_id != workspace_id or parent.kind != StorageEntryKind.FOLDER.value:
                 raise VaultError(404, "Folder not found.")
+        await self._require(session, actor, workspace, "read", parent)
         statement = select(StorageEntry).where(StorageEntry.workspace_id == workspace_id)
         if trashed:
             statement = statement.where(StorageEntry.trashed_at.is_not(None))
@@ -101,10 +394,13 @@ class VaultService:
         workspace_id: str,
         name: str,
         parent_id: str | None,
+        *,
+        actor: StorageActor = OWNER_ACTOR,
     ) -> dict[str, Any]:
         workspace = await self._workspace(session, workspace_id, write=True)
         safe_name = self._safe_name(name)
         parent = await self._parent(session, workspace_id, parent_id)
+        await self._require(session, actor, workspace, "write", parent)
         path = self._child_path(parent, safe_name)
         await self._ensure_available_path(session, workspace_id, path)
         owner_kind, owner_id, owner_name = await self._owner(session, workspace)
@@ -124,15 +420,22 @@ class VaultService:
             ),
             status=StorageEntryStatus.AVAILABLE.value,
             current_version_number=0,
-            created_by_kind="owner",
-            created_by_name="Owner",
+            created_by_kind=actor.kind,
+            created_by_employee_id=actor.employee_id,
+            created_by_name=actor.name,
             owner_kind=owner_kind,
             owner_id=owner_id,
             owner_name=owner_name,
         )
         session.add(entry)
         session.add(
-            self._event(workspace_id, entry, "folder_created", f"Created folder {safe_name}.")
+            self._event(
+                workspace_id,
+                entry,
+                "folder_created",
+                f"Created folder {safe_name}.",
+                actor=actor,
+            )
         )
         await self._commit_conflict(session, "A file or folder with that name already exists.")
         await session.refresh(entry)
@@ -147,6 +450,8 @@ class VaultService:
         reader: Reader,
         parent_id: str | None,
         description: str | None,
+        *,
+        actor: StorageActor = OWNER_ACTOR,
     ) -> dict[str, Any]:
         workspace = await self._workspace(session, workspace_id, write=True)
         safe_name = self._safe_name(filename)
@@ -156,6 +461,7 @@ class VaultService:
                 415, f"Files with the {extension or '(none)'} extension are not allowed."
             )
         parent = await self._parent(session, workspace_id, parent_id)
+        await self._require(session, actor, workspace, "write", parent)
         path = self._child_path(parent, safe_name)
         await self._ensure_available_path(session, workspace_id, path)
         quota = self._quota(workspace)
@@ -189,8 +495,9 @@ class VaultService:
             ),
             status=StorageEntryStatus.AVAILABLE.value,
             current_version_number=1,
-            created_by_kind="owner",
-            created_by_name="Owner",
+            created_by_kind=actor.kind,
+            created_by_employee_id=actor.employee_id,
+            created_by_name=actor.name,
             owner_kind=owner_kind,
             owner_id=owner_id,
             owner_name=owner_name,
@@ -206,8 +513,9 @@ class VaultService:
             size_bytes=blob.size,
             sha256=blob.sha256,
             status=StorageVersionStatus.AVAILABLE.value,
-            created_by_kind="owner",
-            created_by_name="Owner",
+            created_by_kind=actor.kind,
+            created_by_employee_id=actor.employee_id,
+            created_by_name=actor.name,
         )
         try:
             # Explicit flushes keep SQLite and PostgreSQL insertion order identical;
@@ -222,6 +530,7 @@ class VaultService:
                     entry,
                     "file_uploaded",
                     f"Uploaded {safe_name}.",
+                    actor=actor,
                     version=version,
                     details={"size_bytes": blob.size},
                 )
@@ -237,8 +546,16 @@ class VaultService:
         await session.refresh(entry)
         return await self.entry_view(session, entry)
 
-    async def download(self, session: AsyncSession, entry_id: str) -> VaultDownload:
+    async def download(
+        self,
+        session: AsyncSession,
+        entry_id: str,
+        *,
+        actor: StorageActor = OWNER_ACTOR,
+    ) -> VaultDownload:
         entry = await self._entry(session, entry_id)
+        workspace = await self._workspace(session, entry.workspace_id)
+        await self._require(session, actor, workspace, "read", entry)
         if entry.kind != StorageEntryKind.FILE.value or entry.trashed_at is not None:
             raise VaultError(404, "File not found.")
         if entry.status != StorageEntryStatus.AVAILABLE.value:
@@ -291,9 +608,11 @@ class VaultService:
         *,
         name: str | None,
         parent_id: str | object | None = UNSET,
+        actor: StorageActor = OWNER_ACTOR,
     ) -> dict[str, Any]:
         entry = await self._entry(session, entry_id)
-        await self._workspace(session, entry.workspace_id, write=True)
+        workspace = await self._workspace(session, entry.workspace_id, write=True)
+        await self._require(session, actor, workspace, "write", entry)
         if entry.trashed_at is not None:
             raise VaultError(409, "Restore this item before renaming or moving it.")
         safe_name = self._safe_name(name) if name is not None else entry.name
@@ -305,6 +624,8 @@ class VaultService:
                 )
         target_parent_id = entry.parent_id if parent_id is UNSET else parent_id
         parent = await self._parent(session, entry.workspace_id, target_parent_id)
+        if target_parent_id != entry.parent_id:
+            await self._require(session, actor, workspace, "write", parent)
         rows = list(
             await session.scalars(
                 select(StorageEntry).where(StorageEntry.workspace_id == entry.workspace_id)
@@ -338,33 +659,55 @@ class VaultService:
                 entry,
                 "entry_updated",
                 f"Updated {safe_name}.",
+                actor=actor,
             )
         )
         await self._commit_conflict(session, "The destination already contains that name.")
         await session.refresh(entry)
         return await self.entry_view(session, entry)
 
-    async def trash(self, session: AsyncSession, entry_id: str) -> dict[str, Any]:
+    async def trash(
+        self,
+        session: AsyncSession,
+        entry_id: str,
+        *,
+        actor: StorageActor = OWNER_ACTOR,
+    ) -> dict[str, Any]:
         entry = await self._entry(session, entry_id)
-        await self._workspace(session, entry.workspace_id, write=True)
+        workspace = await self._workspace(session, entry.workspace_id, write=True)
+        await self._require(session, actor, workspace, "write", entry)
         if entry.trashed_at is not None:
             raise VaultError(409, "This item is already in Trash.")
         affected = await self._subtree(session, entry)
         now = datetime.now(UTC)
         for row in affected:
             row.trashed_at = now
-            row.trashed_by_kind = "owner"
-            row.trashed_by_name = "Owner"
+            row.trashed_by_kind = actor.kind
+            row.trashed_by_employee_id = actor.employee_id
+            row.trashed_by_name = actor.name
         session.add(
-            self._event(entry.workspace_id, entry, "entry_trashed", f"Moved {entry.name} to Trash.")
+            self._event(
+                entry.workspace_id,
+                entry,
+                "entry_trashed",
+                f"Moved {entry.name} to Trash.",
+                actor=actor,
+            )
         )
         await session.commit()
         await session.refresh(entry)
         return await self.entry_view(session, entry)
 
-    async def restore(self, session: AsyncSession, entry_id: str) -> dict[str, Any]:
+    async def restore(
+        self,
+        session: AsyncSession,
+        entry_id: str,
+        *,
+        actor: StorageActor = OWNER_ACTOR,
+    ) -> dict[str, Any]:
         entry = await self._entry(session, entry_id)
-        await self._workspace(session, entry.workspace_id, write=True)
+        workspace = await self._workspace(session, entry.workspace_id, write=True)
+        await self._require(session, actor, workspace, "write", entry)
         if entry.trashed_at is None:
             raise VaultError(409, "This item is not in Trash.")
         if entry.parent_id:
@@ -377,7 +720,13 @@ class VaultService:
             row.trashed_by_employee_id = None
             row.trashed_by_name = None
         session.add(
-            self._event(entry.workspace_id, entry, "entry_restored", f"Restored {entry.name}.")
+            self._event(
+                entry.workspace_id,
+                entry,
+                "entry_restored",
+                f"Restored {entry.name}.",
+                actor=actor,
+            )
         )
         await session.commit()
         await session.refresh(entry)
@@ -463,6 +812,140 @@ class VaultService:
             "trashed_at": entry.trashed_at,
             "created_at": entry.created_at,
             "updated_at": entry.updated_at,
+        }
+
+    async def _workspace_view(
+        self, session: AsyncSession, workspace: StorageWorkspace
+    ) -> dict[str, Any]:
+        return {
+            "id": workspace.id,
+            "scope": workspace.scope,
+            "department_key": workspace.department_key,
+            "state": workspace.state,
+            "used_bytes": await self._usage(session, workspace.id),
+            "quota_bytes": self._quota(workspace),
+            "quota_override_bytes": workspace.quota_bytes,
+        }
+
+    async def _allowed(
+        self,
+        session: AsyncSession,
+        actor: StorageActor,
+        workspace: StorageWorkspace,
+        permission: str,
+        entry: StorageEntry | None = None,
+    ) -> bool:
+        if actor.kind in {"owner", "system"}:
+            return True
+        required = PERMISSION_RANK[permission]
+        if workspace.scope == StorageWorkspaceScope.COMPANY.value and required <= 1:
+            return True
+        if workspace.department_key == actor.department_key and required <= 2:
+            return True
+        now = datetime.now(UTC)
+        statements = [
+            StorageGrant.workspace_id == workspace.id,
+            StorageGrant.revoked_at.is_(None),
+            (StorageGrant.expires_at.is_(None) | (StorageGrant.expires_at > now)),
+        ]
+        identities = []
+        if actor.employee_id:
+            identities.append(
+                (StorageGrant.grantee_kind == StorageGranteeKind.EMPLOYEE.value)
+                & (StorageGrant.grantee_id == actor.employee_id)
+            )
+        if actor.department_key:
+            identities.append(
+                (StorageGrant.grantee_kind == StorageGranteeKind.DEPARTMENT.value)
+                & (StorageGrant.grantee_id == actor.department_key)
+            )
+        if not identities:
+            return False
+        identity = identities[0]
+        for clause in identities[1:]:
+            identity = identity | clause
+        grants = list(await session.scalars(select(StorageGrant).where(*statements, identity)))
+        for grant in grants:
+            if PERMISSION_RANK[grant.permission] < required:
+                continue
+            if grant.entry_id is None:
+                return True
+            if entry is None:
+                continue
+            granted_entry = await session.get(StorageEntry, grant.entry_id)
+            if granted_entry and (
+                entry.id == granted_entry.id or entry.path.startswith(f"{granted_entry.path}/")
+            ):
+                return True
+        return False
+
+    async def _require(
+        self,
+        session: AsyncSession,
+        actor: StorageActor,
+        workspace: StorageWorkspace,
+        permission: str,
+        entry: StorageEntry | None = None,
+    ) -> None:
+        if not await self._allowed(session, actor, workspace, permission, entry):
+            raise VaultError(403, "This storage actor does not have the required access.")
+
+    async def _validate_link_target(
+        self,
+        session: AsyncSession,
+        workspace: StorageWorkspace,
+        target_type: str,
+        target_id: str,
+    ) -> None:
+        if target_type == "task":
+            task = await session.get(Task, target_id)
+            if task is None:
+                raise VaultError(422, "The linked task does not exist.")
+            if (
+                workspace.scope == StorageWorkspaceScope.DEPARTMENT.value
+                and task.department != workspace.department_key
+            ):
+                raise VaultError(409, "A task must match the artifact workspace department.")
+            return
+        if target_type == "app":
+            if await session.get(App, target_id) is None:
+                raise VaultError(422, "The linked app does not exist.")
+        elif target_type == "app_version":
+            if await session.get(AppVersion, target_id) is None:
+                raise VaultError(422, "The linked app version does not exist.")
+        else:
+            raise VaultError(422, "Only task, app, and app_version links are supported.")
+        if (
+            workspace.scope == StorageWorkspaceScope.DEPARTMENT.value
+            and workspace.department_key != "engineering"
+        ):
+            raise VaultError(409, "App artifacts belong in the engineering or company workspace.")
+
+    @staticmethod
+    def _grant_view(grant: StorageGrant) -> dict[str, Any]:
+        return {
+            "id": grant.id,
+            "workspace_id": grant.workspace_id,
+            "entry_id": grant.entry_id,
+            "grantee_kind": grant.grantee_kind,
+            "grantee_id": grant.grantee_id,
+            "permission": grant.permission,
+            "expires_at": grant.expires_at,
+            "revoked_at": grant.revoked_at,
+            "created_at": grant.created_at,
+        }
+
+    @staticmethod
+    def _link_view(link: StorageLink) -> dict[str, Any]:
+        return {
+            "id": link.id,
+            "entry_id": link.entry_id,
+            "version_id": link.version_id,
+            "target_type": link.target_type,
+            "target_id": link.target_id,
+            "relation": link.relation,
+            "label": link.label,
+            "created_at": link.created_at,
         }
 
     async def _workspace(
@@ -627,6 +1110,7 @@ class VaultService:
         kind: str,
         text: str,
         *,
+        actor: StorageActor = OWNER_ACTOR,
         version: StorageVersion | None = None,
         details: dict[str, object] | None = None,
     ) -> StorageEvent:
@@ -636,8 +1120,28 @@ class VaultService:
             version_id=version.id if version else None,
             level="info",
             kind=kind,
-            actor_kind="owner",
-            actor_name="Owner",
+            actor_kind=actor.kind,
+            actor_employee_id=actor.employee_id,
+            actor_name=actor.name,
+            text=text,
+            details=details or {},
+        )
+
+    @staticmethod
+    def _workspace_event(
+        workspace_id: str,
+        kind: str,
+        text: str,
+        actor: StorageActor,
+        details: dict[str, object] | None = None,
+    ) -> StorageEvent:
+        return StorageEvent(
+            workspace_id=workspace_id,
+            level="info",
+            kind=kind,
+            actor_kind=actor.kind,
+            actor_employee_id=actor.employee_id,
+            actor_name=actor.name,
             text=text,
             details=details or {},
         )

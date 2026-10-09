@@ -12,6 +12,9 @@ export interface StorageOverview {
   file_count: number;
   folder_count: number;
   version_count: number;
+  active_grant_count: number;
+  linked_entry_count: number;
+  read_only_workspace_count: number;
   stored_bytes: number;
   quota_bytes_per_department: number;
   backup_configured: boolean;

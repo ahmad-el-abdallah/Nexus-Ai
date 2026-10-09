@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Annotated, Literal
 from urllib.parse import quote
 
@@ -18,6 +18,8 @@ from app.models import (
     StorageEntry,
     StorageEntryKind,
     StorageEvent,
+    StorageGrant,
+    StorageLink,
     StorageVersion,
     StorageVersionStatus,
     StorageWorkspace,
@@ -47,6 +49,9 @@ class StorageOverview(BaseModel):
     file_count: int
     folder_count: int
     version_count: int
+    active_grant_count: int
+    linked_entry_count: int
+    read_only_workspace_count: int
     stored_bytes: int
     quota_bytes_per_department: int
     backup_configured: bool
@@ -60,6 +65,56 @@ class WorkspaceOut(BaseModel):
     state: Literal["active", "read_only"]
     used_bytes: int
     quota_bytes: int
+    quota_override_bytes: int | None
+
+
+class WorkspaceUpdate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    quota_bytes: int | None = Field(default=None, ge=0)
+    state: Literal["active", "read_only"] | None = None
+
+
+class GrantCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    grantee_kind: Literal["employee", "department"]
+    grantee_id: str = Field(min_length=1, max_length=64)
+    permission: Literal["read", "write", "manage"]
+    entry_id: str | None = Field(default=None, max_length=32)
+    expires_at: datetime | None = None
+
+
+class GrantOut(BaseModel):
+    id: str
+    workspace_id: str
+    entry_id: str | None
+    grantee_kind: Literal["employee", "department"]
+    grantee_id: str
+    permission: Literal["read", "write", "manage"]
+    expires_at: datetime | None
+    revoked_at: datetime | None
+    created_at: datetime
+
+
+class LinkCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    target_type: Literal["task", "app", "app_version"]
+    target_id: str = Field(min_length=1, max_length=64)
+    relation: str = Field(default="source", min_length=1, max_length=32)
+    label: str | None = Field(default=None, max_length=160)
+
+
+class LinkOut(BaseModel):
+    id: str
+    entry_id: str
+    version_id: str | None
+    target_type: Literal["task", "app", "app_version"]
+    target_id: str
+    relation: str
+    label: str | None
+    created_at: datetime
 
 
 class EntryOut(BaseModel):
@@ -115,9 +170,10 @@ def _raise(error: VaultError) -> None:
 
 
 @router.get("/overview", response_model=StorageOverview)
-async def storage_overview(request: Request, session: Session) -> StorageOverview:
+async def storage_overview(request: Request, session: Session, vault: Vault) -> StorageOverview:
     """Return real aggregate metadata suitable for the public room projection."""
     settings: Settings = request.app.state.settings
+    await vault.sync_workspaces(session)
     stored_bytes = await session.scalar(
         select(func.coalesce(func.sum(StorageVersion.size_bytes), 0)).where(
             StorageVersion.status == StorageVersionStatus.AVAILABLE.value
@@ -139,6 +195,18 @@ async def storage_overview(request: Request, session: Session) -> StorageOvervie
             session, StorageEntry, StorageEntry.kind == StorageEntryKind.FOLDER.value
         ),
         version_count=await _count(session, StorageVersion),
+        active_grant_count=await _count(
+            session,
+            StorageGrant,
+            StorageGrant.revoked_at.is_(None),
+            (StorageGrant.expires_at.is_(None) | (StorageGrant.expires_at > datetime.now(UTC))),
+        ),
+        linked_entry_count=int(
+            await session.scalar(select(func.count(func.distinct(StorageLink.entry_id)))) or 0
+        ),
+        read_only_workspace_count=await _count(
+            session, StorageWorkspace, StorageWorkspace.state == "read_only"
+        ),
         stored_bytes=int(stored_bytes or 0),
         quota_bytes_per_department=settings.storage_department_quota_bytes,
         backup_configured=settings.storage_backup_root is not None,
@@ -149,6 +217,57 @@ async def storage_overview(request: Request, session: Session) -> StorageOvervie
 @router.get("/workspaces", response_model=list[WorkspaceOut])
 async def list_workspaces(session: Session, vault: Vault) -> list[dict[str, object]]:
     return await vault.workspaces(session)
+
+
+@router.patch("/workspaces/{workspace_id}", response_model=WorkspaceOut)
+async def update_workspace(
+    workspace_id: str, body: WorkspaceUpdate, session: Session, vault: Vault
+) -> dict[str, object]:
+    if not body.model_fields_set:
+        raise HTTPException(422, "Provide a quota or workspace state.")
+    quota: int | object | None = (
+        body.quota_bytes if "quota_bytes" in body.model_fields_set else UNSET
+    )
+    try:
+        return await vault.update_workspace(
+            session, workspace_id, quota_bytes=quota, state=body.state
+        )
+    except VaultError as error:
+        _raise(error)
+
+
+@router.get("/workspaces/{workspace_id}/grants", response_model=list[GrantOut])
+async def list_grants(workspace_id: str, session: Session, vault: Vault) -> list[dict[str, object]]:
+    try:
+        return await vault.grants(session, workspace_id)
+    except VaultError as error:
+        _raise(error)
+
+
+@router.post("/workspaces/{workspace_id}/grants", response_model=GrantOut, status_code=201)
+async def create_grant(
+    workspace_id: str, body: GrantCreate, session: Session, vault: Vault
+) -> dict[str, object]:
+    try:
+        return await vault.grant_access(
+            session,
+            workspace_id,
+            grantee_kind=body.grantee_kind,
+            grantee_id=body.grantee_id,
+            permission=body.permission,
+            entry_id=body.entry_id,
+            expires_at=body.expires_at,
+        )
+    except VaultError as error:
+        _raise(error)
+
+
+@router.delete("/grants/{grant_id}", response_model=GrantOut)
+async def revoke_grant(grant_id: str, session: Session, vault: Vault) -> dict[str, object]:
+    try:
+        return await vault.revoke_grant(session, grant_id)
+    except VaultError as error:
+        _raise(error)
 
 
 @router.get("/workspaces/{workspace_id}/entries", response_model=list[EntryOut])
@@ -245,6 +364,31 @@ async def trash_entry(entry_id: str, session: Session, vault: Vault) -> dict[str
 async def restore_entry(entry_id: str, session: Session, vault: Vault) -> dict[str, object]:
     try:
         return await vault.restore(session, entry_id)
+    except VaultError as error:
+        _raise(error)
+
+
+@router.get("/entries/{entry_id}/links", response_model=list[LinkOut])
+async def list_links(entry_id: str, session: Session, vault: Vault) -> list[dict[str, object]]:
+    try:
+        return await vault.links(session, entry_id)
+    except VaultError as error:
+        _raise(error)
+
+
+@router.post("/entries/{entry_id}/links", response_model=LinkOut, status_code=201)
+async def create_link(
+    entry_id: str, body: LinkCreate, session: Session, vault: Vault
+) -> dict[str, object]:
+    try:
+        return await vault.link_entry(
+            session,
+            entry_id,
+            target_type=body.target_type,
+            target_id=body.target_id,
+            relation=body.relation,
+            label=body.label,
+        )
     except VaultError as error:
         _raise(error)
 

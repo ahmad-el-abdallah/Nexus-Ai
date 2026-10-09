@@ -4,8 +4,8 @@ This document is the architecture and delivery tracker for the **Data Center & D
 Vault** feature. It is a separate, approval-gated feature track named **DC-1** through
 **DC-8** so that it cannot be confused with NEXUS AI's existing 16-stage roadmap.
 
-> **Current status:** DC-3 was completed on 2026-10-09 and is awaiting approval for
-> DC-4. The global product remains at **Stage 10 of 16**, with Stage 11 unapproved. The
+> **Current status:** DC-4 was completed on 2026-10-09 and is awaiting approval for
+> DC-5. The global product remains at **Stage 10 of 16**, with Stage 11 unapproved. The
 > 3D room, live metadata projection and owner file APIs are operational; the browser
 > explorer is not.
 
@@ -38,8 +38,8 @@ reported, then stop for the owner's approval before the next one begins.
 | --- | --- | --- |
 | DC-1 | Project inspection, storage architecture, configuration and schema foundation | ✅ Complete |
 | DC-2 | Visible 3D Data Center room, 2D fallback and backend-connected read-only overview | ✅ Complete |
-| DC-3 | Real storage backend: upload, download, folders, rename, move, trash and validation | ✅ Complete — awaiting approval for DC-4 |
-| DC-4 | Dynamic department workspaces, quotas, permissions and task/app associations | ⏳ Not started; requires approval after DC-3 |
+| DC-3 | Real storage backend: upload, download, folders, rename, move, trash and validation | ✅ Complete |
+| DC-4 | Dynamic department workspaces, quotas, permissions and task/app associations | ✅ Complete — awaiting approval for DC-5 |
 | DC-5 | Professional file explorer, search, previews, metadata and ZIP export | ⏳ Not started |
 | DC-6 | Automatic registration of real AI employee artifacts | ⏳ Not started |
 | DC-7 | Engineering project viewer, immutable versions, restore, diffs and dashboards | ⏳ Not started |
@@ -124,7 +124,7 @@ user files:
   versions/files, code runs, messages and the future canonical project model.
 - **`storage_tags`** — normalized, case-insensitive tag keys for portable search.
 - **`storage_grants`** — department/employee read, write or manage grants with grantor,
-  expiry and revocation history. Enforcement begins with the service layer in DC-3/DC-4.
+  expiry and revocation history, enforced by the service layer in DC-4.
 - **`storage_events`** — append-only audit/failure records whose actor snapshots survive
   employee or artifact removal.
 
@@ -299,15 +299,66 @@ tree.
 | Data Center browser flow and screenshot | **PASS** — visible room, real metadata, operational-owner-API state and honest disabled explorer |
 | Full Playwright browser suite | **PARTIAL** — 53 passed and the same pre-existing suspended-walk test failed under software GL because the employee remained `walking` instead of reaching `away`. All Data Center, desktop, mobile and no-WebGL tests passed. |
 
+## DC-4 implementation
+
+- Workspace synchronization idempotently creates `ws_company` and a stable workspace
+  for every real department at startup and before workspace/overview reads. Departments
+  added while the app is running therefore receive the same behavior without a code or
+  migration edit.
+- The owner can set a workspace quota override or active/read-only state. A quota cannot
+  be lowered below recorded usage, and uploads continue to enforce the effective quota
+  while streaming.
+- `StorageActor` is a trusted service-layer identity. Employees are resolved from the
+  database, can read/write their own department workspace and read the company workspace,
+  and cannot access another department without an active grant. Workspace and subtree
+  grants support read/write/manage levels, employee or department grantees, expiry and
+  audited revocation.
+- HTTP routes remain the local owner surface because human authentication does not yet
+  exist. No request header or body can impersonate an employee; future agent tools must
+  use the internal employee resolver and the same enforced service methods.
+- Artifact links validate real `Task`, `App` or `AppVersion` rows. Department task links
+  must match the workspace; app links are limited to company or Engineering workspaces.
+  Links are idempotent and file links capture the current immutable version.
+- The Data Center projection now includes active access grants, linked artifact count and
+  read-only workspace count. The full explorer remains honestly disabled until DC-5.
+
+### DC-4 owner routes
+
+| Route | Behavior |
+| --- | --- |
+| `PATCH /api/storage/workspaces/{id}` | Set an optional quota override and active/read-only state |
+| `GET/POST /api/storage/workspaces/{id}/grants` | List or create scoped employee/department grants |
+| `DELETE /api/storage/grants/{id}` | Audit and revoke a grant without erasing history |
+| `GET/POST /api/storage/entries/{id}/links` | List or create validated task/app provenance links |
+
+## DC-4 verification
+
+All backend and full-stack checks ran in the isolated `/root/nexus-ai-dev` WSL copy with
+temporary databases, storage roots and fake providers. Frontend checks used the Linux
+Node toolchain so Windows application-control policy could not block native packages.
+
+| Check | Result |
+| --- | --- |
+| DC-4 workspace, quota, permission, grant and association tests | **PASS** — 13 storage tests |
+| Complete backend suite | **PASS** — 259 passed, 4 skipped |
+| Backend Ruff; frontend ESLint and TypeScript | **PASS** |
+| Frontend unit suite | **PASS** — 188 tests |
+| Next.js production build | **PASS** — 21 routes generated |
+| Isolated full-stack smoke test | **PASS** — direct/proxied APIs plus real upload, byte-identical download and Trash |
+| Clean-checkout setup, migrations and smoke test | **PASS** — reproduced from the exact staged tree with fresh database/storage |
+| Data Center focused browser flow and screenshot | **PASS** — visible room, live grant/link counts and honest DC-5 explorer state |
+| Full Playwright browser suite | **PARTIAL** — 53 passed and the same pre-existing suspended-walk test failed under software GL because the employee remained `walking` instead of reaching `away`. The Data Center and all other desktop, mobile and no-WebGL tests passed. |
+
 ## Current limitations
 
-- DC-3's routes act as the local company owner because NEXUS has no human authentication
-  system. Complete agent/department grant enforcement begins in DC-4.
+- HTTP routes act as the local company owner because NEXUS has no human authentication
+  system. Internal employee operations are permission checked, but no agent tool exposes
+  them until automatic artifact registration in DC-6.
 - There is no browser file explorer, per-rack health, writable room dashboard or mobile
   Vault interface yet.
 - Existing chat, app and code-run files have not been migrated or registered.
-- Automatic AI artifact tools, historical version restore, sharing and backup are not
-  implemented. Reconciliation is manual and non-destructive.
+- Automatic AI artifact tools, historical version restore, browser sharing workflows and
+  backup are not implemented. Reconciliation is manual and non-destructive.
 - The only implemented blob backend is local disk. Backup health is unknown while
   `NEXUS_STORAGE_BACKUP_ROOT` is unset.
 - A canonical Project model and human authentication do not yet exist. The integrations

@@ -41,10 +41,13 @@ test.describe("3D headquarters", () => {
     await expect(panel.getByRole("heading", { name: "Data Center" })).toBeVisible();
     await expect(panel.getByText("Metadata online")).toBeVisible();
     await expect(panel).toContainText("Read-only");
+    await expect(panel).toContainText("Access grants0");
+    await expect(panel).toContainText("Linked items0");
+    await expect(panel).toContainText("All workspaces currently accept authorized writes.");
     await expect(panel.getByText("Storage operations are available through the owner API.")).toBeVisible();
     await expect(panel.getByRole("button", { name: /Digital Vault explorer/ })).toBeDisabled();
     await settle(page);
-    await page.screenshot({ path: "../.artifacts/e2e/data-center.png" });
+    await page.screenshot({ path: "../.artifacts/e2e/data-center-dc4.png" });
   });
 
   test("clicking a room's floor in 3D selects it (raycast)", async ({ page }) => {

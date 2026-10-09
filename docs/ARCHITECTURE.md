@@ -718,7 +718,9 @@ CEO (capped at 14 kB).
 The Data Center is tracked independently as **DC-1 through DC-8** in
 [`DATA_CENTER.md`](DATA_CENTER.md). DC-2 adds a searchable, enterable room beside
 Engineering to the shared 3D/2D layout and a `/api/storage/overview` projection. DC-3
-adds the real owner-facing Vault API and local blob service. It does not advance the
+adds the real owner-facing Vault API and local blob service. DC-4 adds automatic
+workspace provisioning, quota/state administration, trusted employee actors, scoped
+grants and validated links to real tasks and apps. It does not advance the
 global 16-stage roadmap; the browser explorer is not claimed before DC-5.
 
 Searchable metadata lives in the existing database and immutable bytes live under
@@ -728,8 +730,13 @@ SHA-256, flushes, then atomically publishes the blob before the metadata transac
 committed. A failed metadata commit removes the new blob. Reconciliation detects
 missing, corrupt, orphaned and unsafe objects without deleting uncertain data.
 
-Department workspaces come from real `departments` rows. Owner APIs and future agent
-tools share the service boundary; DC-4 adds complete actor permissions and associations.
+Department workspaces come from real `departments` rows and are synchronized
+idempotently at startup and storage reads. Owner APIs and agent operations share the
+service boundary. Agent callers receive an internally resolved `StorageActor`; they
+cannot choose another employee identity in an HTTP request. Same-department access,
+company read access, scoped grants, expiry, revocation, read-only state and quotas are
+enforced before metadata or blob operations. Task and app links resolve real domain rows
+and remain idempotent.
 No endpoint accepts a filesystem path or returns a storage key. Logical paths are NFKC
 normalised and case-folded for uniqueness, object keys are generated internally, reads
 refuse symbolic links and downloads receive `nosniff`. Rack meshes remain fixed physical

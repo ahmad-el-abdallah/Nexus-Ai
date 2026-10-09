@@ -117,13 +117,14 @@ project directory, so stop `make dev` first.
 
 Shell environment variables override `.env` values.
 
-#### Data Center storage (DC-3 operational backend)
+#### Data Center storage (DC-4 workspace and access controls)
 
 These server-side settings are implemented and validated. `GET /api/storage/overview`
 returns safe aggregate metadata for the 3D Data Center panel without exposing file
 names, storage keys or server paths. Owner-facing routes under `/api/storage` now list
-workspaces and entries, create folders, stream uploads and downloads, rename/move items,
-move trees to Trash, restore them and run non-destructive reconciliation. The browser
+workspaces and entries, change workspace quotas/state, manage auditable employee or
+department grants, create validated task/app links, create folders, stream uploads and
+downloads, rename/move items, move trees to Trash, restore them and run non-destructive reconciliation. The browser
 explorer is not connected until DC-5. Implementation and test evidence are tracked in
 [`DATA_CENTER.md`](DATA_CENTER.md).
 
@@ -146,6 +147,14 @@ configured allowlist. Size and workspace quota limits are enforced while streami
 Trash does not free quota or delete immutable blobs. `POST /api/storage/maintenance/reconcile`
 checks every recorded SHA-256/size, marks missing or corrupt versions unavailable and
 reports orphaned/unsafe objects without deleting them.
+
+Every department row receives a stable `ws_department:{key}` workspace at startup and
+whenever storage workspaces are read. The HTTP surface is the trusted local owner;
+background agent integrations must resolve an employee through
+`VaultService.actor_for_employee()` and use the same service methods. Request data cannot
+select an arbitrary actor. Employees can read/write their own department workspace and
+read the company workspace; cross-department and manage access require an active,
+unexpired grant. Read-only state and effective quota remain enforced for every actor.
 
 ### Frontend (`frontend/.env`)
 

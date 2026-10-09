@@ -124,6 +124,8 @@ def create_app(
         if settings.secret_key is None:
             log.warning("app.secret_key_missing", hint="Run `make setup` to generate backend/.env")
         if await _schema_ready(app.state.db):
+            async with app.state.db.sessionmaker() as storage_session:
+                await app.state.vault.sync_workspaces(storage_session)
             await app.state.chat.recover()
             await app.state.tasks.recover()
             await app.state.runs.recover()

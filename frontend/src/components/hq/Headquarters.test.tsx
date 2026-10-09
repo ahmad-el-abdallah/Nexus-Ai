@@ -116,6 +116,9 @@ describe("RoomPanel", () => {
           file_count: 2,
           folder_count: 1,
           version_count: 4,
+          active_grant_count: 2,
+          linked_entry_count: 1,
+          read_only_workspace_count: 0,
           stored_bytes: 1536,
           quota_bytes_per_department: 10 * 1024 * 1024 * 1024,
           backup_configured: false,
@@ -130,6 +133,8 @@ describe("RoomPanel", () => {
     expect(await within(panel).findByText("Metadata online")).toBeInTheDocument();
     expect(panel).toHaveTextContent("Workspaces21");
     expect(panel).toHaveTextContent("Files2");
+    expect(panel).toHaveTextContent("Access grants2");
+    expect(panel).toHaveTextContent("Linked items1");
     expect(panel).toHaveTextContent("Stored1.5 KiB");
     expect(panel).toHaveTextContent("No storage activity has been recorded yet");
     expect(within(panel).getByText("Storage operations are available through the owner API.")).toBeInTheDocument();
