@@ -26,7 +26,7 @@ with open("report.csv", "w") as f:
     f.write("service,error_rate\\napi,2.5\\n")
 print("rows written")
 print("env:", sorted(os.environ))
-print("home:", os.listdir(os.path.expanduser("~")))
+print("home:", sorted(os.listdir(os.path.expanduser("~"))))
 try:
     urllib.request.urlopen("https://example.com", timeout=3)
     print("NETWORK OPEN")

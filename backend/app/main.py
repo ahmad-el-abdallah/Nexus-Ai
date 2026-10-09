@@ -16,6 +16,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.ai.gateway import AIGateway
 from app.api import (
     ai,
+    apps,
     chat,
     departments,
     email,
@@ -27,6 +28,8 @@ from app.api import (
     voice,
     workflows,
 )
+from app.apps.builder import AppBuilder
+from app.apps.runtime import AppRuntime
 from app.core.config import APP_VERSION, Environment, Settings, get_settings
 from app.core.events import EventBus, install_shutdown_hook
 from app.core.logging import configure_logging, get_logger
@@ -91,6 +94,18 @@ def create_app(
             app.state.ai,
             http_transport=email_transport,
         )
+        app.state.apps = AppBuilder(
+            app.state.db,
+            app.state.ai,
+            app.state.events,
+            app.state.activity,
+            app.state.chat,
+            settings.apps_dir / "_checks",
+        )
+        app.state.app_runtime = AppRuntime(
+            app.state.db, app.state.events, settings.apps_dir, settings.app_preview_port
+        )
+        await app.state.app_runtime.startup()
         if settings.env == Environment.TEST:
             app.state.email.poll_seconds = None  # tests sync the inbox explicitly
         app.state.started_at = datetime.now(UTC)
@@ -109,6 +124,8 @@ def create_app(
             await app.state.tasks.recover()
             await app.state.runs.recover()
             await app.state.workflows.recover()
+            await app.state.apps.recover()
+            await app.state.app_runtime.recover()
             await app.state.activity.recover()
             await app.state.email.recover()
         try:
@@ -116,6 +133,8 @@ def create_app(
         finally:
             app.state.events.close()
             await app.state.workflows.shutdown()
+            await app.state.apps.shutdown()
+            await app.state.app_runtime.shutdown()
             await app.state.email.shutdown()
             await app.state.tasks.shutdown()
             await app.state.runs.shutdown()
@@ -152,4 +171,5 @@ def create_app(
     app.include_router(workflows.router)
     app.include_router(email.router)
     app.include_router(runs.router)
+    app.include_router(apps.router)
     return app

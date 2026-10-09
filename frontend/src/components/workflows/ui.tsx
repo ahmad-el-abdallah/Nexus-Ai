@@ -70,10 +70,10 @@ export function TaskStatusChip({ status }: { status: TaskStatus }) {
   );
 }
 
-export function UsageBar({ used, max }: { used: number; max: number }) {
+export function UsageBar({ used, max, of = "workflow" }: { used: number; max: number; of?: string }) {
   const share = max ? Math.min(1, used / max) : 0;
   return (
-    <div className="flex items-center gap-2" title="Model requests used by this workflow, out of its hard limit">
+    <div className="flex items-center gap-2" title={`Model requests used by this ${of}, out of its hard limit`}>
       <div className="h-1.5 w-24 overflow-hidden rounded-full bg-white/10">
         <div className={`h-full rounded-full ${share > 0.85 ? "bg-nx-warn" : "bg-nx-cyan"}`} style={{ width: `${share * 100}%` }} />
       </div>

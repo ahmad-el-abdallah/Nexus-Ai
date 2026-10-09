@@ -13,6 +13,19 @@
 - Node 22, npm, uv, Python 3.12, Google Chrome.
 - The owner may also use an ASUS TUF A15 (Windows → run inside WSL2; set Chrome to the
   NVIDIA GPU, keep it plugged in).
+- **Windows 11 PC (current):** the repository is at `C:\Users\<user>\Desktop\Nexus-Ai`
+  and is edited there; `start.bat` runs it in WSL2 (Ubuntu, as root) from a copy at
+  `~/nexus-ai`. Smart App Control blocks unsigned compiled Python packages, so **nothing
+  Python runs on Windows** (no `uv run`, no pytest, no ruff). Develop like this:
+  - sync the Windows folder to a second copy and run there:
+    `NEXUS_WSL_DIR=~/nexus-ai-dev bash <(tr -d '\r' < scripts/wsl-start.sh) --sync-only`,
+    then `cd ~/nexus-ai-dev/backend && uv run --frozen pytest …` (never touch `~/nexus-ai`,
+    the owner's running copy);
+  - format from WSL directly on the Windows files (`ruff format /mnt/c/…`);
+  - never run a mutating git command from WSL on `/mnt/c/…` (line endings differ);
+    commit from Windows git;
+  - Google Chrome is installed in WSL for Playwright (`E2E_SOFTWARE_GL=1`);
+  - the sandbox (bubblewrap, systemd user session) works in that WSL.
 
 ## Running servers
 - Owner's dev: `./start.sh` or `make dev` → backend 8000 (`--reload`), frontend 3000

@@ -334,3 +334,45 @@ systems — including networking, security and system-administration tools such 
 network or port scanner — instead of refusing or giving only an outline, declining only
 requests framed as intruding on systems the owner has no right to.
 
+### Follow-up (owner request): engineering builds, stores and runs full web apps
+
+**Completed:** 2026-10-09 · **Commit:** "Engineering builds, stores and runs full web apps"
+
+The owner asks for a web application (Apps page, or **Build as app** on a chat message).
+The Software Architect designs it; the owner approves; each file is written by the
+engineer whose role fits it (backend → Backend Developer, frontend → Frontend Developer,
+setup files → DevOps Engineer, docs → Software Architect — decided in code); the result
+is syntax-checked, reviewed by Quality Assurance and fixed once; the CTO writes the
+delivery note. The app is stored with its versions, can be downloaded as a zip, run in
+the sandbox without downloading, and changed with a change request (a new version that
+rewrites only the affected files). Design: `ARCHITECTURE.md` → "Apps".
+
+| Criterion | Result | Evidence |
+| --- | --- | --- |
+| Work is split by role | PASS | Backend/e2e tests: files go to the matching roles, with fallbacks when a role is unavailable; real run below |
+| Nothing is written before approval | PASS | Tests: only the design request runs; 4 concurrent approvals count once |
+| Full app is stored and downloadable | PASS | Files and versions in the database; zip download checked in backend and browser tests |
+| Runs without downloading, only after approval | PASS | Tests + real run: the version's hash must match; the app answers through the preview port; a wrong hash is refused |
+| A running app is isolated | PASS | Test from inside the app: no network, empty environment, own folder only; the install proxy refuses every host except the three registries (incl. NEXUS's own API) |
+| Packages can be installed | PASS | Opt-in test with the real registries: Flask (PyPI), Express (npm) and a React/Vite build all install, start and answer |
+| Change requests | PASS | Tests + real run: version 2 rewrites only the planned files, version 1 stays available |
+| No endless loops, failures visible | PASS | Request cap, one fix round, pause/resume, cancel, restart recovery; unfixed problems are listed, an unusable review is reported as missing |
+
+**Real run** (owner's key, `nvidia/nemotron-3-super-120b-a12b`, on a copy of the
+database): "a to-do list for my team…" → design in 8 s (1 request): Flask + SQLite,
+6 files. Build in 117 s (10 requests in total): Yusuf Demir wrote `server.py`, Amara
+Mensah the three frontend files, Kenji Watanabe `requirements.txt`, Felix Schmidt the
+README; the QA Director's review found a real defect (static files served under a
+doubled path) and the backend developer fixed it. Approved to run: Flask was installed
+from PyPI in the sandbox in 3 s and the app answered. Checked by hand through the
+preview port: adding, listing, filtering by owner, marking done and deleting tasks work,
+and the tasks were still there after a restart. A change request ("show a counter of
+open tasks") produced version 2 in 89 s (6 requests), rewriting two files. **16 model
+requests in total.**
+
+Limits to know: a running app has no internet access; apps are text files only (≤ 16
+files); quality depends on the model, so an app may need a change request before it
+works — the run log and "Ask the team to fix this" are there for that; the preview opens
+only on the computer NEXUS runs on. Also fixed: a test that depended on directory
+listing order, and one unformatted test file.
+

@@ -6,6 +6,7 @@ import { type ChangeEvent, type FormEvent, type KeyboardEvent, useEffect, useLay
 
 import { Initials } from "@/components/hq/people";
 import { useChatVoice } from "@/components/voice/useChatVoice";
+import { createApp } from "@/lib/apps";
 import { attachmentUrl, type Conversation, formatBytes, MAX_FILE_BYTES, MAX_FILES, type Message, type ReplyState } from "@/lib/chat";
 import { type Addressee, responderFor } from "@/lib/routing";
 import { speechPlayer } from "@/lib/speech";
@@ -71,6 +72,7 @@ function MessageItem({
   speaking,
   canListen,
   onDelegate,
+  onBuild,
   onRun,
 }: {
   m: Message;
@@ -84,6 +86,8 @@ function MessageItem({
   speaking: string | null;
   canListen: boolean;
   onDelegate: (m: Message) => void;
+  /** Asks engineering to build what this message describes as a web app. */
+  onBuild: (m: Message) => void;
   /** Runs a code block from this reply in the sandbox (after the owner approves it). */
   onRun: (m: Message, code: string, language: string) => void;
 }) {
@@ -106,6 +110,11 @@ function MessageItem({
       {m.role === "owner" && m.content.trim().length >= 10 && (
         <button type="button" onClick={() => onDelegate(m)} className="hover:text-nx-cyan" title="Ask the CEO to plan this as a multi-department workflow (you approve the plan before anything runs)">
           Delegate to CEO
+        </button>
+      )}
+      {m.role === "owner" && m.content.trim().length >= 10 && (
+        <button type="button" onClick={() => onBuild(m)} className="hover:text-nx-cyan" title="Ask the engineering team to build this as a web app (you approve the design before anything is written)">
+          Build as app
         </button>
       )}
       {m.content.trim() && (
@@ -456,6 +465,12 @@ export function ConversationView({
                 void act(async () => {
                   const workflow = await createWorkflow({ source_message_id: msg.id });
                   router.push(`/workflows/${workflow.id}`);
+                })
+              }
+              onBuild={(msg) =>
+                void act(async () => {
+                  const app = await createApp({ source_message_id: msg.id });
+                  router.push(`/apps/${app.id}`);
                 })
               }
               onRun={(msg, code, language) => setRun({ code, language, messageId: msg.id })}

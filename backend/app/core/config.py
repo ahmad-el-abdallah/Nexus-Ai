@@ -68,6 +68,12 @@ class Settings(BaseSettings):
     voice_dir: Path = Field(default=BACKEND_DIR / "var" / "voice", alias="NEXUS_VOICE_DIR")
     # Sandbox runs (Stage 9 follow-up): each run's work folder and the files it wrote.
     runs_dir: Path = Field(default=BACKEND_DIR / "var" / "runs", alias="NEXUS_RUNS_DIR")
+    # Apps the engineering team builds: each app's folder when it runs (its files,
+    # installed packages and the data it stores).
+    apps_dir: Path = Field(default=BACKEND_DIR / "var" / "apps", alias="NEXUS_APPS_DIR")
+    # Where a running app is reached: http://localhost:<port>, bound to 127.0.0.1.
+    # Unset: 8100 (any free port while testing).
+    preview_port: int | None = Field(default=None, alias="NEXUS_PREVIEW_PORT", ge=0, le=65535)
     # Test-only stand-in speech engines (refused outside NEXUS_ENV=test).
     voice_fake: bool = Field(default=False, alias="NEXUS_VOICE_FAKE")
 
@@ -85,6 +91,12 @@ class Settings(BaseSettings):
         if isinstance(value, str) and not value.strip():
             return None
         return value
+
+    @property
+    def app_preview_port(self) -> int:
+        if self.preview_port is not None:
+            return self.preview_port
+        return 0 if self.env == Environment.TEST else 8100
 
     @property
     def database_dialect(self) -> str:

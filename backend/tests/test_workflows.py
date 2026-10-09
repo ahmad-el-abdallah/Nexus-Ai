@@ -17,7 +17,10 @@ from app.orchestration import plans
 from tests.fake_agents import canned_reply
 from tests.test_ai import FAKE_KEY, MASTER, _no_sleep, ready_catalog
 
-FORMATS = ("PLAN", "BREAKDOWN", "WORK", "REVIEW", "SUMMARY", "REPORT", "EMAIL", "TASK")
+FORMATS = (
+    "PLAN", "BREAKDOWN", "WORK", "REVIEW", "SUMMARY", "REPORT", "EMAIL", "TASK",
+    "APPPLAN", "APPCHANGE", "APPFILE", "APPREVIEW", "APPDELIVERY",
+)  # fmt: skip
 OBJECTIVE = "Research a new software business opportunity and create an implementation plan."
 
 

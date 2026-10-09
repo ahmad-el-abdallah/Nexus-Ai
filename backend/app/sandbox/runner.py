@@ -17,6 +17,7 @@ import shutil
 import signal
 import subprocess
 import time
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -55,6 +56,12 @@ class Capabilities:
     languages: list[str]
     reason: str | None = None
     node_prefix: Path | None = None
+    uv: Path | None = None  # installs an app's Python packages (apps only)
+
+
+def _uv() -> Path | None:
+    found = os.environ.get("UV") or shutil.which("uv")  # `uv run` sets UV to itself
+    return Path(os.path.realpath(found)) if found and Path(found).is_file() else None
 
 
 def capabilities() -> Capabilities:
@@ -73,7 +80,7 @@ def capabilities() -> Capabilities:
         languages.append("javascript")
     if Path("/usr/bin/bash").exists():
         languages.append("bash")
-    return Capabilities(True, languages, None, prefix)
+    return Capabilities(True, languages, None, prefix, _uv())
 
 
 @dataclass
@@ -94,9 +101,33 @@ def _cap(data: bytes) -> str:
     return text
 
 
-def command(work: Path, language: str, caps: Capabilities) -> list[str]:
-    _, run = LANGUAGES[language]
-    path = "/usr/bin:/bin"
+@dataclass(frozen=True)
+class Limits:
+    memory: str = MEMORY
+    tasks: int = TASKS
+    cpu: str = "100%"
+
+
+def sandbox(
+    run: Sequence[str],
+    work: Path,
+    caps: Capabilities,
+    *,
+    limits: Limits | None = None,
+    node: bool = False,
+    chdir: str = "/work",
+    read_only: Sequence[tuple[Path, str]] = (),
+    writable: Sequence[tuple[Path, str]] = (),
+    env: Mapping[str, str] | None = None,
+    path: str = "",
+) -> list[str]:
+    """The command line that runs `run` in the sandbox, with `work` as /work.
+
+    Always: no network (own empty namespace), only /usr of this computer (read-only), an
+    empty environment and the cgroup limits. `read_only` / `writable` add (folder or file
+    here, path inside) pairs; `path` goes in front of PATH; `env` adds variables."""
+    limits = limits or Limits()
+    search = "/usr/bin:/bin"
     binds = [
         "--ro-bind", "/usr", "/usr",
         "--symlink", "usr/lib", "/lib",
@@ -107,21 +138,53 @@ def command(work: Path, language: str, caps: Capabilities) -> list[str]:
         "--ro-bind-try", "/etc/ld.so.cache", "/etc/ld.so.cache",
         "--ro-bind-try", "/etc/ssl/certs", "/etc/ssl/certs",
     ]  # fmt: skip
-    if language == "javascript" and caps.node_prefix:
+    if node and caps.node_prefix:
         binds += ["--ro-bind", str(caps.node_prefix), "/opt/node"]
-        path = "/opt/node/bin:" + path
+        search = "/opt/node/bin:" + search
+    for source, inside in read_only:
+        binds += ["--ro-bind", str(source), inside]
+    if path:
+        search = path + ":" + search
+    variables = {"PATH": search, "HOME": "/work", "LANG": "C.UTF-8", **(env or {})}
     return [
         "systemd-run", "--user", "--scope", "--quiet", "--collect",
-        "-p", f"MemoryMax={MEMORY}", "-p", "MemorySwapMax=0",
-        "-p", f"TasksMax={TASKS}", "-p", "CPUQuota=100%",
+        "-p", f"MemoryMax={limits.memory}", "-p", "MemorySwapMax=0",
+        "-p", f"TasksMax={limits.tasks}", "-p", f"CPUQuota={limits.cpu}",
         "bwrap", "--unshare-all", "--die-with-parent", "--new-session", "--clearenv",
         *binds,
         "--proc", "/proc", "--dev", "/dev", "--tmpfs", "/tmp",  # noqa: S108 - the sandbox's own empty /tmp
-        "--bind", str(work), "/work", "--chdir", "/work",
-        "--setenv", "PATH", path, "--setenv", "HOME", "/work",
-        "--setenv", "LANG", "C.UTF-8", "--setenv", "PYTHONDONTWRITEBYTECODE", "1",
+        "--bind", str(work), "/work",
+        *(arg for source, inside in writable for arg in ("--bind", str(source), inside)),
+        "--chdir", chdir,
+        *(arg for name, value in variables.items() for arg in ("--setenv", name, value)),
         *run,
     ]  # fmt: skip
+
+
+def command(work: Path, language: str, caps: Capabilities) -> list[str]:
+    _, run = LANGUAGES[language]
+    return sandbox(
+        run, work, caps, node=language == "javascript", env={"PYTHONDONTWRITEBYTECODE": "1"}
+    )
+
+
+def execute(argv: Sequence[str], timeout: float) -> tuple[int | None, bytes, bytes, bool]:
+    """Runs a sandbox command line to its end: (exit code, stdout, stderr, timed out).
+    On a timeout its whole process group is killed and the exit code is None."""
+    process = subprocess.Popen(  # noqa: S603 - fixed argv, no shell
+        list(argv),
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        start_new_session=True,
+    )
+    try:
+        out, err = process.communicate(timeout=timeout)
+    except subprocess.TimeoutExpired:
+        os.killpg(process.pid, signal.SIGKILL)
+        out, err = process.communicate()
+        return None, out, err, True
+    return process.returncode, out, err, False
 
 
 def run(code: str, language: str, work: Path, keep: Path) -> Outcome:
@@ -133,22 +196,8 @@ def run(code: str, language: str, work: Path, keep: Path) -> Outcome:
     source, _ = LANGUAGES[language]
     (work / source).write_text(code, encoding="utf-8")
     started = time.perf_counter()
-    process = subprocess.Popen(  # noqa: S603 - fixed argv, no shell
-        command(work, language, caps),
-        stdin=subprocess.DEVNULL,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        start_new_session=True,
-    )
-    timed_out = False
-    try:
-        out, err = process.communicate(timeout=TIMEOUT_S)
-    except subprocess.TimeoutExpired:
-        timed_out = True
-        os.killpg(process.pid, signal.SIGKILL)
-        out, err = process.communicate()
+    code_, out, err, timed_out = execute(command(work, language, caps), TIMEOUT_S)
     duration = int((time.perf_counter() - started) * 1000)
-    code_ = process.returncode
     killed = not timed_out and code_ is not None and (code_ < 0 or code_ in (137, 143))
     files = _keep_files(work, keep, source)
     return Outcome(

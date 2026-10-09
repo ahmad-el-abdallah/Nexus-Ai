@@ -4,6 +4,7 @@ const PORT = Number(process.env.E2E_PORT ?? 3200);
 const API_PORT = Number(process.env.E2E_API_PORT ?? 18200);
 const DB = `/tmp/nexus-e2e-${API_PORT}.db`;
 const FAKE_AI_PORT = Number(process.env.E2E_FAKE_AI_PORT ?? 18300);
+const PREVIEW_PORT = Number(process.env.E2E_PREVIEW_PORT ?? 18400);
 // Matches backend/tests/fake_provider.py — e2e never calls the real NVIDIA API.
 const FAKE_AI_KEY = "fake-e2e-key-0123456789abcdef";
 // backend/tests/fake_mail.py: SMTP + IMAP on 127.0.0.1 and a control port (no real mail).
@@ -79,6 +80,9 @@ export default defineConfig({
         NEXUS_PUBLIC_URL: `http://127.0.0.1:${PORT}`,
         // The fake mail control port also serves a fake Brevo API.
         NEXUS_BREVO_API_URL: `http://127.0.0.1:${FAKE_MAIL.control}/v3`,
+        // Apps built in the tests run in their own folder and are reached on this port.
+        NEXUS_APPS_DIR: `/tmp/nexus-e2e-apps-${API_PORT}`,
+        NEXUS_PREVIEW_PORT: String(PREVIEW_PORT),
       },
       url: `http://127.0.0.1:${API_PORT}/api/health/ready`,
       timeout: 60_000,

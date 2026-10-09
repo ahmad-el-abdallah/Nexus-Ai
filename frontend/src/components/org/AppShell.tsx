@@ -11,6 +11,7 @@ export const NAV = [
   { href: "/", label: "Headquarters" },
   { href: "/chat", label: "Chat" },
   { href: "/workflows", label: "Workflows" },
+  { href: "/apps", label: "Apps" },
   { href: "/email", label: "Email" },
   { href: "/departments", label: "Departments" },
   { href: "/org", label: "Org chart" },

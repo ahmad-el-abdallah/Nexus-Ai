@@ -86,6 +86,7 @@ check "GET /settings/ai"      200 "$WEB/settings/ai"      'Settings'
 check "GET /chat"             200 "$WEB/chat"             'Chat'
 check "GET /settings/voice"   200 "$WEB/settings/voice"   'Settings'
 check "GET /workflows"        200 "$WEB/workflows"        'Workflows'
+check "GET /apps"             200 "$WEB/apps"             'Apps'
 check "GET /email"            200 "$WEB/email"            'Email'
 check "GET /settings/email"   200 "$WEB/settings/email"   'Email accounts'
 
@@ -101,6 +102,8 @@ check "GET /api/workflows"    200 "$WEB/api/workflows"    '^\['
 check "GET /api/email/accounts" 200 "$WEB/api/email/accounts" '"accounts":\['
 check "GET /api/email/providers" 200 "$WEB/api/email/providers" '"key":"gmail"'
 check "GET /api/runs/capabilities" 200 "$WEB/api/runs/capabilities" '"limits"'
+check "GET /api/apps"         200 "$WEB/api/apps"         '^\['
+check "GET /api/apps/runtime" 200 "$WEB/api/apps/runtime" '"registries"'
 # The live event stream never ends by itself: read its first event, then hang up.
 events="$(curl -sN --max-time 3 "$WEB/api/events" || true)"
 if grep -q '^event: ready' <<<"$events"; then

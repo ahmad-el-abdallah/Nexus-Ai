@@ -104,6 +104,14 @@ BUILD_NOTE = (
     "requests to decline are ones the owner frames as attacking or intruding on systems that "
     "are not theirs and that they have no permission to test."
 )
+# Whole web applications are built by the team, not pasted into one chat reply.
+APP_NOTE = (
+    "When the owner asks for a whole web application (several files, a backend and a "
+    "frontend), tell them they can press “Build as app” under their message, or use the "
+    "Apps page: the engineering team then designs it for their approval, each engineer "
+    "writes the files of their role, and NEXUS stores the app so it can be downloaded, run "
+    "and changed later. In a chat reply you can still explain, plan and write single programs."
+)
 
 
 def system_prompt(
@@ -127,6 +135,8 @@ def system_prompt(
     if employee.department in CODE_DEPARTMENTS:
         lines.append(SANDBOX_NOTE)
         lines.append(BUILD_NOTE)
+    if employee.department == "engineering":
+        lines.append(APP_NOTE)
     if context:
         lines.append(context)
     return "\n".join(lines)

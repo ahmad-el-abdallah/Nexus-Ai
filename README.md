@@ -14,8 +14,10 @@ screen is simulated.
 > draft emails and replies; every email waits in the **approval queue** on the **Email**
 > page and is sent only after you approve it. Inbox reading (untrusted, plain text),
 > connection tests, a full email log, safe retries without duplicates and a disconnect
-> flow. Workflows, chat and voice from Stages 6–8 keep working. See
-> [`docs/STAGES.md`](docs/STAGES.md).
+> flow. Workflows, chat and voice from Stages 6–8 keep working. The engineering team can
+> also build whole web apps (**Apps**): the architect designs, you approve, each engineer
+> writes the files of their role, and the stored app can be downloaded, run here in a
+> sandbox, or changed. See [`docs/STAGES.md`](docs/STAGES.md).
 
 ## Quick start
 
@@ -43,7 +45,7 @@ make dev     # backend on :8000 + frontend on :3000
 ```
 
 Open **http://localhost:3000** for the headquarters and **http://localhost:3000/system**
-for live system status, **/departments** and **/org** for the organisation,
+for live system status, **/apps** for apps built by engineering, **/departments** and **/org** for the organisation,
 **http://localhost:3000/characters** for the character studio
 (animation preview). API docs: **http://localhost:3000/api/docs**.
 

@@ -31,6 +31,20 @@
 - English voices by gender live in `voice/speakers.py` (generated from LibriSpeech
   SPEAKERS.TXT + measured pitch); don't pick speakers from `avatar_seed` directly.
 
+- **SQLite reads in one session are not a snapshot**: each query sees the latest commit.
+  A detail endpoint that loads the parent row first and the status later can return the
+  new status with old details. Read the status-bearing row **first**
+  (`apps.builder.app_summary`, `api/apps._detail`) and everything else after it.
+- `created_at` (`func.now()`) has one-second resolution in SQLite: two rows made in the
+  same second have no order. Sort "the latest" by a timestamp set in code
+  (`AppRun.approved_at`).
+- Apps sandbox: `asyncio.Server.wait_closed()` waits for open connections — never await
+  it while the process on the other end is still alive. A running app can plant symbolic
+  links in its own folder: write and delete through `apps/files.py` only. Programs in
+  the sandbox need `/etc/hosts` and `/etc/passwd` (bound from `_support/`), and installs
+  need their caches on disk (`/work/.cache`), not in the sandbox's tmpfs (it counts as
+  memory). A reply whose closing code fence shares the last line is still complete.
+
 ## Frontend / 3D
 - drei `<Html>` creates a React root per label → "synchronously unmount a root" errors in
   dev Strict Mode. Use `ScreenAnchors` + `ScreenLabel`.

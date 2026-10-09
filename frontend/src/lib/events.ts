@@ -35,6 +35,11 @@ export const LIVE_EVENTS = [
   "email.deleted",
   "email.removed",
   "run.updated",
+  "app.updated",
+  "app.file",
+  "app.event",
+  "app.run",
+  "app.deleted",
 ] as const;
 export type LiveEventType = (typeof LIVE_EVENTS)[number];
 

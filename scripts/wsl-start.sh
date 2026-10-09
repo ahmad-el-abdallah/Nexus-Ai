@@ -8,6 +8,10 @@
 # ignored, uncommitted changes included) to a run copy on the Linux filesystem, with
 # Linux line endings. Dependencies, backend/.env and backend/var (database, voice
 # models, sandbox runs) live only in the run copy and are never overwritten.
+#
+#   --sync-only   copy the project and stop (nothing is started). With
+#                 NEXUS_WSL_DIR=~/some-other-folder this makes a second copy, e.g. to run
+#                 the tests without touching the copy the servers run from.
 set -euo pipefail
 
 SRC="$(pwd)"
@@ -15,6 +19,14 @@ RUN="${NEXUS_WSL_DIR:-$HOME/nexus-ai}"
 STATE="${XDG_DATA_HOME:-$HOME/.local/share}/nexus-ai-wsl"
 NODE_DIR="$STATE/node"
 NODE_DIST="https://nodejs.org/dist/latest-v22.x"
+# Each run copy has its own pair of git indexes, so a second copy never disturbs the first.
+INDEXES="$STATE/copies/${RUN//\//_}"
+
+SYNC_ONLY=0
+ARGS=()
+for arg in "$@"; do
+  if [[ "$arg" == --sync-only ]]; then SYNC_ONLY=1; else ARGS+=("$arg"); fi
+done
 
 step() { printf '\n\033[1;36m▸ %s\033[0m\n' "$*"; }
 fail() { printf '\033[1;31m✗ %s\033[0m\n' "$*" >&2; exit 1; }
@@ -28,7 +40,11 @@ done
 ((${#missing[@]} == 0)) \
   || fail "Missing in Linux: ${missing[*]}. Install with: sudo apt update && sudo apt install -y git curl tar coreutils"
 
-mkdir -p "$STATE/objects" "$RUN"
+mkdir -p "$STATE/objects" "$INDEXES" "$RUN"
+# The indexes of the default copy used to live directly in $STATE.
+if [[ -f "$STATE/run.index" && ! -f "$INDEXES/run.index" && "$RUN" == "$HOME/nexus-ai" ]]; then
+  mv "$STATE/run.index" "$STATE/snapshot.index" "$INDEXES/"
+fi
 export PATH="$NODE_DIR/bin:$HOME/.local/bin:$PATH"
 # The documented Python version; uv downloads it if the distribution doesn't have it.
 export UV_PYTHON="${UV_PYTHON:-3.12}"
@@ -91,13 +107,13 @@ sync_copy() {
 
   cd "$SRC"
   # Starting from HEAD keeps the executable bits git recorded (Windows has none).
-  [[ -f "$STATE/snapshot.index" ]] \
-    || GIT_INDEX_FILE="$STATE/snapshot.index" GIT_WORK_TREE="$SRC" "${src[@]}" read-tree HEAD
-  GIT_INDEX_FILE="$STATE/snapshot.index" GIT_WORK_TREE="$SRC" "${src[@]}" add -A 2>/dev/null
-  tree="$(GIT_INDEX_FILE="$STATE/snapshot.index" GIT_WORK_TREE="$SRC" "${src[@]}" write-tree)"
+  [[ -f "$INDEXES/snapshot.index" ]] \
+    || GIT_INDEX_FILE="$INDEXES/snapshot.index" GIT_WORK_TREE="$SRC" "${src[@]}" read-tree HEAD
+  GIT_INDEX_FILE="$INDEXES/snapshot.index" GIT_WORK_TREE="$SRC" "${src[@]}" add -A 2>/dev/null
+  tree="$(GIT_INDEX_FILE="$INDEXES/snapshot.index" GIT_WORK_TREE="$SRC" "${src[@]}" write-tree)"
 
   cd "$RUN"
-  GIT_INDEX_FILE="$STATE/run.index" GIT_WORK_TREE="$RUN" "${run[@]}" read-tree --reset -u "$tree"
+  GIT_INDEX_FILE="$INDEXES/run.index" GIT_WORK_TREE="$RUN" "${run[@]}" read-tree --reset -u "$tree"
 
   unset GIT_DIR GIT_OBJECT_DIRECTORY GIT_ALTERNATE_OBJECT_DIRECTORIES
 }
@@ -106,8 +122,9 @@ step "Copying the project to Linux ($RUN)"
 sync_copy
 cd "$RUN"
 chmod +x start.sh scripts/*.sh
+((SYNC_ONLY)) && exit 0
 
 command -v bwrap >/dev/null \
   || echo "note: running employee code (▶ Run) needs bubblewrap: sudo apt install -y bubblewrap"
 
-exec ./start.sh "$@"
+exec ./start.sh "${ARGS[@]}"

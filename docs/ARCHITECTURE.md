@@ -81,6 +81,7 @@ flowchart LR
 | `src/stores/` | 3+ | *Planned.* Client state (Zustand) hydrated from REST and patched by WS events |
 | `src/lib/events.ts` | 6 | One shared `EventSource` per tab; reconnects (and retries failed responses); tells listeners to reload after a reconnect |
 | `src/components/voice/`, `src/lib/{voice,recorder,speech}.ts`, `src/world/state/voiceStore.ts` | 7 | Settings → Voice, mic recording with levels/silence detection, transcript review, voice sessions, spoken replies |
+| `src/components/apps/`, `src/lib/apps.ts`, `src/app/apps/` | 9+ | Apps page, design review, files viewer, run panel (approval dialog, log, open link), change requests |
 | `src/components/chat/`, `src/world/state/chatStore.ts` | 6 | Chat page, conversation list/search, Markdown messages, composer with attachments, task dialog, department task board; live event reducers |
 
 ### Backend (`backend/`, Python 3.12 · FastAPI · SQLAlchemy 2 async · Alembic)
@@ -98,6 +99,8 @@ flowchart LR
 | `app/services/chat.py`, `app/api/chat.py`, `app/api/tasks.py` | 6 | Conversations, routing to employee/department/CEO, background streaming replies, context, attachments, search, tasks |
 | `app/voice/`, `app/api/voice.py` | 7 | Local speech: model catalogue (pinned + SHA-256), verified installs, faster-whisper transcription, Piper synthesis, speech text preparation |
 | `app/orchestration/` (`engine.py`, `plans.py`, `prompts.py`), `app/api/workflows.py`, `app/services/activity.py`, `app/services/staffing.py` | 8 | Workflow engine: CEO delegation, supervisors, workers, reviews, dependencies, retries, pause/cancel, hard limits; live employee statuses |
+| `app/sandbox/` (`runner.py`, `service.py`, `bridge.py`, `checker.py`), `app/api/runs.py` | 9+ | Bubblewrap sandbox: owner-approved code runs, and the command builder apps use |
+| `app/apps/` (`builder.py`, `runtime.py`, `plans.py`, `roles.py`, `stacks.py`, `checks.py`, `files.py`, `prompts.py`), `app/api/apps.py` | 9+ | Apps: engineering designs, writes by role, checks and reviews web applications; storage, versions, download, sandboxed install and run |
 | `app/services/tools/` | 8, 15 | *Planned.* Tool gateway: allowlists, sandboxing, permission checks |
 | `app/email/` (`providers.py`, `transport.py`, `brevo.py`, `mime.py`, `oauth.py`, `service.py`), `app/api/email.py` | 9 | Company email: provider presets, Brevo API sending, SMTP/IMAP (stdlib, in threads), OAuth (PKCE), encrypted credentials, drafts, approval queue, duplicate-safe sending, inbox sync, email log |
 | `app/services/metrics/` | 10 | *Planned.* Evidence-based ratings with configurable weights |
@@ -480,6 +483,75 @@ own PID namespace, at most 64 processes, 512 MB memory without swap, one CPU cor
 files the program writes (≤ 20 files, 5 MB) are kept in `backend/var/runs/<id>/files`
 (`NEXUS_RUNS_DIR`) and downloaded as attachments (`nosniff`). Engineering, IT, Data, QA
 and Security employees are told these rules so their code runs there.
+
+### Apps: engineering builds, stores and runs web applications (`app/apps/`)
+
+The owner asks for a web application (Apps page, or **Build as app** on a chat message)
+and the engineering team builds it, each engineer the files of their own role.
+
+- **Flow (`builder.py`, a persisted state machine):** request → the **architect's
+  design** (JSON: name, summary, stack, API contract, packages, files) → **owner
+  approval** (atomic `awaiting_approval → building`; nothing is written before it) →
+  **engineers write the files**, one model call per file → **automatic syntax checks**
+  (no model) → **review** → **authors fix their files, once** → the **CTO's delivery
+  note** → `ready`.
+- **Who writes what is code, not prompt** (`roles.py`, `stacks.area_of`): the file's
+  path decides its area, the area decides the role — backend → Backend Developer (then
+  AI Engineer, Software Architect), frontend → Frontend Developer, setup files
+  (`requirements.txt`, `package.json`, Vite config) → DevOps Engineer, docs → Software
+  Architect; the design is the architect's, the review is the Quality Assurance lead's,
+  the delivery note the CTO's. When nobody with the role is available the next role
+  steps in, then the department's lead; suspended people are skipped; people who share
+  a role take turns.
+- **Order:** backend → frontend → setup → docs. Each author is given the design, the
+  API contract and the files already written, so the frontend matches the backend and
+  the setup files list the packages the code really uses.
+- **Validation (`plans.py`, `stacks.py`):** one of three fixed stacks (`python`, `node`,
+  `python-react`) with its required files; safe relative paths only (no `..`, no
+  dotfiles, nothing under `node_modules`/`data`/`dist`, text file types); ≤ 16 files of
+  ≤ 60,000 characters; a reply that stops mid-file is refused and retried.
+- **Hard limits:** 2 attempts per step, 1 fix round per file, a request cap per version
+  (default 45, checked before every call), 45 minutes. Transient errors are retried
+  once; budget / emergency stop / missing key or model **pause** (Resume continues with
+  the files already written); a restart pauses a build. A file that can't be written
+  fails the build (Resume retries it). A review or delivery note that fails is reported
+  as missing, not invented.
+- **Checks (`checks.py`, `sandbox/checker.py`):** Python and JavaScript are parsed
+  inside the sandbox (`compile`, `node --check` — never executed), JSON is parsed
+  in-process, a Python import of a package without a `requirements.txt` is an error.
+  Other files, and code when the sandbox isn't available, are **"not checked"** — never
+  shown as passed. Problems that remain after the fix round are listed on the version
+  ("known problems") and given to the delivery note.
+- **Change requests:** a new version. The architect returns which files to modify, add
+  or delete (validated: existing paths, the stack's required files can't be deleted);
+  after approval only those files are rewritten, the rest is carried over.
+- **Storage:** `apps`, `app_versions`, `app_files` (content in the database),
+  `app_events` (timeline), `app_runs` (migration `0012`). Download is a zip built on
+  request (`attachment`, `nosniff`); a file's content is served as JSON, never as a page.
+- **Running without downloading (`runtime.py`):** the owner approves one finished
+  version by the SHA-256 of all its files; then, in the bubblewrap sandbox:
+  1. **Install** with fixed commands (`uv venv` + `uv pip install -r requirements.txt`,
+     `npm install`). The sandbox still has no network: `sandbox/bridge.py` inside it
+     forwards `127.0.0.1:3128` to a Unix socket, where a proxy in the backend accepts
+     only `CONNECT` to `pypi.org`, `files.pythonhosted.org` and `registry.npmjs.org` on
+     port 443. Everything else (NEXUS's own API, the LAN, any other site) gets 403 and a
+     line in the log. 5 minutes, 1.5 GB, installed size ≤ 800 MB. Skipped while the
+     dependency files are unchanged.
+  2. **Build** (React: `npm run build`), no network.
+  3. **Start** (`python3 server.py` / `node server.js`), no network, the owner's files
+     invisible, empty environment, 768 MB, 128 processes, one core, stopped after
+     60 minutes. The app's port (8000) exists only inside its sandbox; the bridge
+     exposes it as a Unix socket, and the backend relays `127.0.0.1:NEXUS_PREVIEW_PORT`
+     (8100) to it — a separate origin from NEXUS. One app runs at a time.
+  The commands come from `stacks.py`; nothing a model wrote decides what is executed.
+  The app's `./data` folder is kept between runs.
+- **A running app is untrusted:** files are never written or deleted through a symbolic
+  link it may have planted (`files.py`), and the relay connects only to a real socket.
+- **Live office:** every step streams onto the engineer's desk monitor like any other
+  work (`ActivityTracker`), and progress is published as `app.updated`, `app.file`,
+  `app.event` and `app.run`.
+- **Honesty:** the delivery note is labelled model-generated, and the UI says the files
+  were checked for syntax and reviewed by reading — not run or tested.
 
 ### Company knowledge for every employee
 

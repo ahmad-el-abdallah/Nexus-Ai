@@ -1,6 +1,19 @@
 """Import every model module here so Alembic autogenerate sees all tables."""
 
 from app.models.ai import AIModel, AIProviderSettings, AIUsage
+from app.models.app import (
+    APP_ACTIVE,
+    APP_FINISHED,
+    APP_RUN_ACTIVE,
+    App,
+    AppEvent,
+    AppFile,
+    AppRun,
+    AppRunStatus,
+    AppStatus,
+    AppVersion,
+    FileStatus,
+)
 from app.models.chat import (
     Attachment,
     Conversation,
@@ -19,11 +32,21 @@ from app.models.voice import VoiceSettings
 from app.models.workflow import FINISHED, Workflow, WorkflowEvent, WorkflowStatus
 
 __all__ = [
+    "APP_ACTIVE",
+    "APP_FINISHED",
+    "APP_RUN_ACTIVE",
     "FINISHED",
     "TERMINAL",
     "AIModel",
     "AIProviderSettings",
     "AIUsage",
+    "App",
+    "AppEvent",
+    "AppFile",
+    "AppRun",
+    "AppRunStatus",
+    "AppStatus",
+    "AppVersion",
     "Attachment",
     "CodeRun",
     "Conversation",
@@ -35,6 +58,7 @@ __all__ = [
     "EmailStatus",
     "Employee",
     "EmployeeStatus",
+    "FileStatus",
     "Message",
     "MessageRole",
     "MessageStatus",
