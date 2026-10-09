@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import datetime
 from enum import StrEnum
 
-from sqlalchemy import ForeignKey, Integer, String, Text, func
+from sqlalchemy import JSON, ForeignKey, Integer, String, Text, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base, TimestampMixin, UTCDateTime
@@ -50,6 +50,10 @@ class Employee(TimestampMixin, Base):
     # "female" | "male" (null: not set). Drives the voice, the character's look and
     # grammatical gender when the employee speaks Arabic.
     gender: Mapped[str | None] = mapped_column(String(8), nullable=True)
+    # Owner-managed list of skill tags; performance is computed, never stored here.
+    skills: Mapped[list[str]] = mapped_column(
+        JSON, nullable=False, default=list, server_default="[]"
+    )
     status: Mapped[str] = mapped_column(
         String(20), nullable=False, default=EmployeeStatus.IDLE.value
     )

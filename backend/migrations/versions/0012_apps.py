@@ -1,8 +1,12 @@
 """Apps: web applications built by the engineering team, their versions, files and runs.
 
 Revision ID: 0012_apps
-Revises: 0011_code_runs
+Revises: 0012_profiles
 Create Date: 2026-10-09
+
+Apps and employee profiles (0012_profiles) were built at the same time on two computers,
+both on top of 0011_code_runs. They touch different tables, so they are simply applied
+one after the other: profiles first (it was published first), then apps.
 """
 
 from collections.abc import Sequence
@@ -12,7 +16,7 @@ from alembic import op
 
 
 revision: str = '0012_apps'
-down_revision: str | None = '0011_code_runs'
+down_revision: str | None = '0012_profiles'
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 

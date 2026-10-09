@@ -111,7 +111,9 @@ export function DepartmentPage({ departmentKey }: { departmentKey: string }) {
                         <Initials employee={e} size="size-8" />
                         <span>
                           <span className="block text-nx-text">
-                            {e.name}
+                            <Link href={`/employees/${e.id}`} className="hover:text-nx-cyan">
+                              {e.name}
+                            </Link>
                             {e.id === department.director_id && (
                               <span className="ml-2 rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase" style={{ background: `${department.color}22`, color: department.color }}>
                                 Director

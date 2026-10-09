@@ -104,6 +104,7 @@ check "GET /api/email/providers" 200 "$WEB/api/email/providers" '"key":"gmail"'
 check "GET /api/runs/capabilities" 200 "$WEB/api/runs/capabilities" '"limits"'
 check "GET /api/apps"         200 "$WEB/api/apps"         '^\['
 check "GET /api/apps/runtime" 200 "$WEB/api/apps/runtime" '"registries"'
+check "GET /api/employees (profile roster)" 200 "$WEB/api/employees" '"skills"'
 # The live event stream never ends by itself: read its first event, then hang up.
 events="$(curl -sN --max-time 3 "$WEB/api/events" || true)"
 if grep -q '^event: ready' <<<"$events"; then
