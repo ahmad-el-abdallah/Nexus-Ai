@@ -109,7 +109,7 @@ describe("RoomPanel", () => {
         json({
           status: "metadata_ready",
           backend: "local",
-          writes_enabled: false,
+          writes_enabled: true,
           workspace_count: 21,
           department_workspace_count: 20,
           entry_count: 3,
@@ -132,7 +132,8 @@ describe("RoomPanel", () => {
     expect(panel).toHaveTextContent("Files2");
     expect(panel).toHaveTextContent("Stored1.5 KiB");
     expect(panel).toHaveTextContent("No storage activity has been recorded yet");
-    expect(within(panel).getByRole("button", { name: /Digital Vault file operations/ })).toBeDisabled();
+    expect(within(panel).getByText("Storage operations are available through the owner API.")).toBeInTheDocument();
+    expect(within(panel).getByRole("button", { name: /Digital Vault explorer/ })).toBeDisabled();
     expect(panel).not.toHaveTextContent("Team");
   });
 });

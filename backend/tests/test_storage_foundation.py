@@ -28,6 +28,7 @@ from app.storage.names import (
     MAX_LOGICAL_PATH_CHARS,
     MAX_LOGICAL_SEGMENT_CHARS,
     StorageNameError,
+    logical_name,
     logical_path,
     logical_path_key,
 )
@@ -150,6 +151,10 @@ def test_logical_paths_are_nfkc_normalised_and_unsafe_forms_are_rejected() -> No
     for path in invalid:
         with pytest.raises(StorageNameError):
             logical_path(path)
+
+    assert logical_name("Report.TXT") == "Report.TXT"
+    with pytest.raises(StorageNameError):
+        logical_name("Reports/Report.TXT")
 
 
 async def test_path_key_is_unique_per_workspace_after_nfkc_and_casefold(

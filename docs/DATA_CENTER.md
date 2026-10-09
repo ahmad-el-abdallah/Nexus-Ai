@@ -4,10 +4,10 @@ This document is the architecture and delivery tracker for the **Data Center & D
 Vault** feature. It is a separate, approval-gated feature track named **DC-1** through
 **DC-8** so that it cannot be confused with NEXUS AI's existing 16-stage roadmap.
 
-> **Current status:** DC-2 was completed on 2026-10-09 and is awaiting approval for
-> DC-3. The global product remains at **Stage 10 of 16**, with Stage 11 unapproved. The
-> 3D room and its safe read-only metadata projection are available; file operations and
-> the explorer are not.
+> **Current status:** DC-3 was completed on 2026-10-09 and is awaiting approval for
+> DC-4. The global product remains at **Stage 10 of 16**, with Stage 11 unapproved. The
+> 3D room, live metadata projection and owner file APIs are operational; the browser
+> explorer is not.
 
 ## Product contract
 
@@ -37,9 +37,9 @@ reported, then stop for the owner's approval before the next one begins.
 | ID | Scope | Status |
 | --- | --- | --- |
 | DC-1 | Project inspection, storage architecture, configuration and schema foundation | ✅ Complete |
-| DC-2 | Visible 3D Data Center room, 2D fallback and backend-connected read-only overview | ✅ Complete — awaiting approval for DC-3 |
-| DC-3 | Real storage backend: upload, download, folders, rename, move, trash and validation | ⏳ Not started; requires approval after DC-2 |
-| DC-4 | Dynamic department workspaces, quotas, permissions and task/app associations | ⏳ Not started |
+| DC-2 | Visible 3D Data Center room, 2D fallback and backend-connected read-only overview | ✅ Complete |
+| DC-3 | Real storage backend: upload, download, folders, rename, move, trash and validation | ✅ Complete — awaiting approval for DC-4 |
+| DC-4 | Dynamic department workspaces, quotas, permissions and task/app associations | ⏳ Not started; requires approval after DC-3 |
 | DC-5 | Professional file explorer, search, previews, metadata and ZIP export | ⏳ Not started |
 | DC-6 | Automatic registration of real AI employee artifacts | ⏳ Not started |
 | DC-7 | Engineering project viewer, immutable versions, restore, diffs and dashboards | ⏳ Not started |
@@ -211,9 +211,9 @@ storage roots; the owner's running `~/nexus-ai` data and real providers were not
 | Isolated full-stack smoke test | **PASS** — pages, APIs, proxy failure and SSE |
 | Playwright browser suite | **FAIL** — 51 passed; the existing employee walk test stayed `walking` instead of reaching `away` under software GL. The isolated test failed the same way on a second run; normal GPU flags could not initialize the WSL office. No DC-1 frontend/3D code changed. |
 
-DC-3 must add streaming size/quota enforcement, atomic blob commits, missing/corrupt
-blob reconciliation and symlink-safe local storage tests; DC-1/DC-2 do not claim those
-file operations exist.
+DC-3 adds streaming size/quota enforcement, atomic blob commits, missing/corrupt blob
+reconciliation and symlink-safe local storage tests; DC-1/DC-2 did not claim those file
+operations existed.
 
 ## DC-2 implementation
 
@@ -247,17 +247,68 @@ the shared working tree.
 | Data Center browser flow and screenshot | **PASS** — room selection, live metadata, read-only states and disabled file operations |
 | Full Playwright browser suite | **PARTIAL** — 52 passed and 2 failed on the first full software-GL run. The new character-click regression was fixed and its focused rerun passed. The remaining pre-existing suspended-walk test again stayed `walking` instead of reaching `away`; its exact isolated rerun failed identically. |
 
+## DC-3 implementation
+
+`VaultService` is now the transaction boundary for owner file operations, and
+`LocalBlobStore` is the only component that handles local object paths. The API surface
+is intentionally backend-first so DC-4 permissions and DC-5's explorer can use the same
+enforced operations instead of duplicating storage logic.
+
+| Route | Behavior |
+| --- | --- |
+| `GET /api/storage/workspaces` | Real workspace usage, state and effective quota |
+| `GET /api/storage/workspaces/{id}/entries` | Safe logical entry metadata; never storage keys or server paths |
+| `POST /api/storage/workspaces/{id}/folders` | Create a validated logical folder |
+| `POST /api/storage/workspaces/{id}/files` | Stream and atomically commit one allowlisted upload |
+| `GET /api/storage/entries/{id}/download` | Revalidate size/SHA-256 and stream with `nosniff` |
+| `PATCH /api/storage/entries/{id}` | Rename or move a file/folder and update descendant paths |
+| `DELETE /api/storage/entries/{id}` | Move the complete logical subtree to Trash without deleting blobs |
+| `POST /api/storage/entries/{id}/restore` | Restore a trashed subtree when its parent is available |
+| `POST /api/storage/maintenance/reconcile` | Mark missing/corrupt versions and report orphaned/unsafe objects without deleting uncertain data |
+
+Uploads stream to a unique private temporary file, enforcing the lower of the per-file
+limit and remaining workspace quota while computing SHA-256. The completed file is
+flushed and atomically moved to an internally generated key before metadata, version and
+audit rows commit together. A failed metadata commit removes the new blob; interrupted
+or oversized streams remove their temporary file. Reconciliation covers the unavoidable
+filesystem/database crash boundary.
+
+Logical paths remain NFKC-normalised and case-insensitively unique. The local backend
+accepts only generated key shapes, refuses symbolic links and non-regular files, and
+never follows a browser path. Read-only workspace state, extension policy, folder-cycle
+prevention, byte limits and quota limits are enforced in the service rather than the UI.
+
+The Data Center panel now reports that the storage owner API is operational while its
+disabled action accurately says the browser explorer is planned for DC-5.
+
+## DC-3 verification
+
+Backend and full-stack verification use the isolated WSL development copy with temporary
+databases, storage roots and fake providers. Frontend-only checks use the shared working
+tree.
+
+| Check | Result |
+| --- | --- |
+| Storage lifecycle, limits, integrity and symlink tests | **PASS** — 15 focused tests |
+| Complete backend suite | **PASS** — 255 passed, 4 skipped |
+| Backend Ruff; frontend ESLint and TypeScript | **PASS** |
+| Frontend unit suite | **PASS** — 188 tests |
+| Next.js production build | **PASS** — 21 routes generated |
+| Isolated full-stack smoke test | **PASS** — real upload, byte-identical download and Trash plus pages, proxy, SSE and backend-down behavior |
+| Clean-checkout setup, migrations and smoke test | **PASS** — reproduced from the exact staged tree with fresh dependencies and database |
+| Data Center browser flow and screenshot | **PASS** — visible room, real metadata, operational-owner-API state and honest disabled explorer |
+| Full Playwright browser suite | **PARTIAL** — 53 passed and the same pre-existing suspended-walk test failed under software GL because the employee remained `walking` instead of reaching `away`. All Data Center, desktop, mobile and no-WebGL tests passed. |
+
 ## Current limitations
 
-- DC-1/DC-2 provide configuration, logical path rules, metadata models, migration, a
-  visible room and a read-only aggregate endpoint; there is no Vault service or
-  file-operation API yet.
-- There is no file explorer, per-rack health, writable dashboard or mobile Vault
-  interface yet.
+- DC-3's routes act as the local company owner because NEXUS has no human authentication
+  system. Complete agent/department grant enforcement begins in DC-4.
+- There is no browser file explorer, per-rack health, writable room dashboard or mobile
+  Vault interface yet.
 - Existing chat, app and code-run files have not been migrated or registered.
-- Automatic AI artifact tools, version restore, sharing, backup and integrity scanning
-  are not implemented.
-- The only planned initial blob backend is local disk. Backup health is unknown while
+- Automatic AI artifact tools, historical version restore, sharing and backup are not
+  implemented. Reconciliation is manual and non-destructive.
+- The only implemented blob backend is local disk. Backup health is unknown while
   `NEXUS_STORAGE_BACKUP_ROOT` is unset.
 - A canonical Project model and human authentication do not yet exist. The integrations
   above deliberately preserve those boundaries rather than fabricate them.

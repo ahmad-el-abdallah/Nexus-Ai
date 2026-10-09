@@ -117,13 +117,15 @@ project directory, so stop `make dev` first.
 
 Shell environment variables override `.env` values.
 
-#### Data Center storage (DC-2 read-only projection)
+#### Data Center storage (DC-3 operational backend)
 
 These server-side settings are implemented and validated. `GET /api/storage/overview`
 returns safe aggregate metadata for the 3D Data Center panel without exposing file
-names, storage keys or server paths. It is intentionally read-only: the current
-foundation does not yet provide file operations. Implementation and test evidence are
-tracked in [`DATA_CENTER.md`](DATA_CENTER.md).
+names, storage keys or server paths. Owner-facing routes under `/api/storage` now list
+workspaces and entries, create folders, stream uploads and downloads, rename/move items,
+move trees to Trash, restore them and run non-destructive reconciliation. The browser
+explorer is not connected until DC-5. Implementation and test evidence are tracked in
+[`DATA_CENTER.md`](DATA_CENTER.md).
 
 | Variable | Default | Purpose |
 | --- | --- | --- |
@@ -138,6 +140,12 @@ On Windows, the default root is inside the selected WSL run copy's `backend/var/
 is not copied back into the Windows Git checkout. Development tests must override it
 with a temporary path in `~/nexus-ai-dev`; they must never point at the owner's running
 `~/nexus-ai` data. A backup on the same physical drive is not disaster recovery.
+
+The API accepts logical names and opaque IDs only. Uploaded extensions must be in the
+configured allowlist. Size and workspace quota limits are enforced while streaming;
+Trash does not free quota or delete immutable blobs. `POST /api/storage/maintenance/reconcile`
+checks every recorded SHA-256/size, marks missing or corrupt versions unavailable and
+reports orphaned/unsafe objects without deleting them.
 
 ### Frontend (`frontend/.env`)
 

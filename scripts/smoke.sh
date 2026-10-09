@@ -78,6 +78,23 @@ check "GET /api/health/ready" 200 "$API/api/health/ready" '"status":"ok"'
 check "GET /api/system/info"  200 "$API/api/system/info"  '"installation_id":"[0-9a-f]{32}"'
 check "GET /api/storage/overview" 200 "$API/api/storage/overview" '"status":"metadata_ready"'
 
+printf 'smoke file contents\n' >"$TMP/vault-smoke.txt"
+upload="$(curl -s -w '\n%{http_code}' -F 'file=@'"$TMP/vault-smoke.txt"';type=text/plain' "$API/api/storage/workspaces/ws_company/files" || true)"
+upload_code="${upload##*$'\n'}"
+upload_body="${upload%$'\n'*}"
+upload_id="$(sed -n 's/.*"id":"\([^"]*\)".*/\1/p' <<<"$upload_body")"
+if [[ "$upload_code" == "201" && -n "$upload_id" ]]; then
+  printf '  \033[32mPASS\033[0m  %s\n' "POST/download/delete Digital Vault file"
+  if ! curl -fs "$API/api/storage/entries/$upload_id/download" -o "$TMP/vault-downloaded.txt" || ! cmp -s "$TMP/vault-smoke.txt" "$TMP/vault-downloaded.txt"; then
+    printf '  \033[31mFAIL\033[0m  %s\n' "Digital Vault download bytes differ"; failures=$((failures + 1))
+  fi
+  if ! curl -fs -X DELETE "$API/api/storage/entries/$upload_id" -o /dev/null; then
+    printf '  \033[31mFAIL\033[0m  %s\n' "Digital Vault trash failed"; failures=$((failures + 1))
+  fi
+else
+  printf '  \033[31mFAIL\033[0m  %s (got %s)\n' "POST Digital Vault file" "$upload_code"; failures=$((failures + 1))
+fi
+
 echo "Frontend:"
 check "GET /healthz"          200 "$WEB/healthz"          '"status":"ok"'
 check "GET / (headquarters)" 200 "$WEB/"                 'NEXUS AI'
@@ -96,7 +113,7 @@ echo "Frontend → backend proxy:"
 check "GET /api/health/ready" 200 "$WEB/api/health/ready" 'x-request-id'
 check "GET /api/system/info"  200 "$WEB/api/system/info"  '"name":"NEXUS AI"'
 check "GET /api/departments"  200 "$WEB/api/departments"  '"key":"knowledge"'
-check "GET /api/storage/overview" 200 "$WEB/api/storage/overview" '"writes_enabled":false'
+check "GET /api/storage/overview" 200 "$WEB/api/storage/overview" '"writes_enabled":true'
 check "GET /api/ai/settings"  200 "$WEB/api/ai/settings"  '"provider":"nvidia"'
 check "GET /api/conversations" 200 "$WEB/api/conversations" '^\['
 check "GET /api/tasks"        200 "$WEB/api/tasks"        '^\['

@@ -61,3 +61,11 @@ def logical_path_key(value: str) -> str:
             f"A storage path's comparison key cannot exceed {MAX_LOGICAL_PATH_CHARS} characters."
         )
     return key
+
+
+def logical_name(value: str) -> str:
+    """Return one safe, canonical path segment."""
+    name = logical_path(value)
+    if "/" in name:
+        raise StorageNameError("A storage name cannot contain path separators.")
+    return name

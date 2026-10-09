@@ -68,7 +68,7 @@ async def test_storage_overview_reports_real_aggregate_metadata(
     body = response.json()
     assert body["status"] == "metadata_ready"
     assert body["backend"] == "local"
-    assert body["writes_enabled"] is False
+    assert body["writes_enabled"] is True
     assert body["workspace_count"] == body["department_workspace_count"] + 1
     assert body["entry_count"] == body["file_count"] == body["version_count"] == 1
     assert body["folder_count"] == 0

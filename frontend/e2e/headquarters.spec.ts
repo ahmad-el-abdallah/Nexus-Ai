@@ -41,7 +41,8 @@ test.describe("3D headquarters", () => {
     await expect(panel.getByRole("heading", { name: "Data Center" })).toBeVisible();
     await expect(panel.getByText("Metadata online")).toBeVisible();
     await expect(panel).toContainText("Read-only");
-    await expect(panel.getByRole("button", { name: /Digital Vault file operations/ })).toBeDisabled();
+    await expect(panel.getByText("Storage operations are available through the owner API.")).toBeVisible();
+    await expect(panel.getByRole("button", { name: /Digital Vault explorer/ })).toBeDisabled();
     await settle(page);
     await page.screenshot({ path: "../.artifacts/e2e/data-center.png" });
   });

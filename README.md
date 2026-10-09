@@ -18,11 +18,12 @@ screen is simulated.
 > writes the files of their role, and the stored app can be downloaded, run here in a
 > sandbox, or changed. See [`docs/STAGES.md`](docs/STAGES.md).
 
-> **Data Center feature track:** DC-2 is complete and awaiting approval for DC-3. The
+> **Data Center feature track:** DC-3 is complete and awaiting approval for DC-4. The
 > searchable, enterable Data Center room now appears beside Engineering with twelve
-> racks and a live read-only storage overview. It is tracked separately from the
-> 16-stage roadmap and does not approve Stage 11. File operations and the Digital Vault
-> explorer are not available yet. See
+> racks and a live storage overview. The local Vault backend now provides validated,
+> quota-limited folder, upload, download, rename, move, Trash, restore and reconciliation
+> APIs. It is tracked separately from the 16-stage roadmap and does not approve Stage 11.
+> The browser file explorer is planned for DC-5. See
 > [`docs/DATA_CENTER.md`](docs/DATA_CENTER.md).
 
 ## Quick start

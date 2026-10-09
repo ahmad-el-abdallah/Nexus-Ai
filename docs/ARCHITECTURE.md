@@ -717,20 +717,24 @@ CEO (capped at 14 kB).
 
 The Data Center is tracked independently as **DC-1 through DC-8** in
 [`DATA_CENTER.md`](DATA_CENTER.md). DC-2 adds a searchable, enterable room beside
-Engineering to the shared 3D/2D layout and a read-only `/api/storage/overview` projection.
-It does not advance the global 16-stage roadmap, and no Vault file API or explorer is
-claimed yet.
+Engineering to the shared 3D/2D layout and a `/api/storage/overview` projection. DC-3
+adds the real owner-facing Vault API and local blob service. It does not advance the
+global 16-stage roadmap; the browser explorer is not claimed before DC-5.
 
-The design keeps searchable metadata in the existing database and immutable bytes
-under opaque keys in a configurable local storage root. Department workspaces come
-from real `departments` rows, and owner APIs plus future agent tools must share one
-permission- and quota-enforcing service. The future 3D room is a projection of that
-committed state: rack counts, usage, health and activity can never be decorative
-values. See the feature document for the schema, atomic-write boundary, integration
-with current attachments/apps/run outputs, security limitations and UI direction. Rack
-meshes are fixed physical equipment; displayed counts, byte usage, configuration and
-activity state come from the database/configuration endpoint and degrade honestly when
-the backend is unavailable.
+Searchable metadata lives in the existing database and immutable bytes live under
+opaque keys in the configurable local storage root. `VaultService` coordinates both;
+`LocalBlobStore` streams to a private temporary file, enforces the byte limit, computes
+SHA-256, flushes, then atomically publishes the blob before the metadata transaction is
+committed. A failed metadata commit removes the new blob. Reconciliation detects
+missing, corrupt, orphaned and unsafe objects without deleting uncertain data.
+
+Department workspaces come from real `departments` rows. Owner APIs and future agent
+tools share the service boundary; DC-4 adds complete actor permissions and associations.
+No endpoint accepts a filesystem path or returns a storage key. Logical paths are NFKC
+normalised and case-folded for uniqueness, object keys are generated internally, reads
+refuse symbolic links and downloads receive `nosniff`. Rack meshes remain fixed physical
+equipment; displayed counts, byte usage, configuration and activity state come from the
+database/configuration endpoint and degrade honestly when the backend is unavailable.
 
 ### Performance budget and measurements
 

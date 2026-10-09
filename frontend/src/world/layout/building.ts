@@ -144,7 +144,7 @@ export const ROOMS: RoomDef[] = [
     accent: "#8b5cf6",
     finish: "tile",
     description:
-      "The Digital Vault operations room. Its panel shows live aggregate metadata; file operations remain unavailable until the storage service is implemented.",
+      "The Digital Vault operations room. Its panel shows live aggregate metadata from the operational storage service; the browser explorer arrives in a later stage.",
   },
 ];
 

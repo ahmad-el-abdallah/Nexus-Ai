@@ -43,6 +43,7 @@ from app.sandbox.service import RunService
 from app.services.activity import ActivityTracker
 from app.services.chat import ChatService
 from app.services.task_runner import TaskRunner
+from app.storage.service import VaultService
 from app.voice.service import VoiceService
 
 log = get_logger("nexus.app")
@@ -73,6 +74,8 @@ def create_app(
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         app.state.settings = settings
         app.state.db = Database(settings.database_url)
+        app.state.vault = VaultService(settings)
+        await app.state.vault.initialize()
         app.state.ai = AIGateway(app.state.db, settings, transport=ai_transport)
         app.state.events = EventBus()
         app.state.activity = ActivityTracker(app.state.db, app.state.events)

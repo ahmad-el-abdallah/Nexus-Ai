@@ -5,7 +5,7 @@ import { request } from "./employees";
 export interface StorageOverview {
   status: "metadata_ready";
   backend: string;
-  writes_enabled: false;
+  writes_enabled: boolean;
   workspace_count: number;
   department_workspace_count: number;
   entry_count: number;
