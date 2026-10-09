@@ -77,9 +77,9 @@ function DataCenterStatus() {
           </div>
         ))}
       </dl>
-      <button type="button" disabled className="mt-3 w-full cursor-not-allowed rounded-xl bg-white/[0.03] px-4 py-3 text-sm text-nx-faint ring-1 ring-nx-line" title="File operations arrive in the next approved storage stage">
-        Digital Vault explorer · Planned for DC-5
-      </button>
+      <Link href="/vault" className="mt-3 block w-full rounded-xl bg-nx-violet/10 px-4 py-3 text-center text-sm font-medium text-nx-violet ring-1 ring-nx-violet/30 transition hover:bg-nx-violet/15 hover:text-white">
+        Open Digital Vault explorer →
+      </Link>
       <div className="mt-3 rounded-xl bg-white/[0.03] px-4 py-3 text-xs leading-5 text-nx-muted ring-1 ring-nx-line">
         <p>{overview.writes_enabled ? "Storage operations are available through the owner API." : "Storage operations are read-only."}</p>
         <p>{overview.read_only_workspace_count ? `${overview.read_only_workspace_count} workspace${overview.read_only_workspace_count === 1 ? " is" : "s are"} currently read-only.` : "All workspaces currently accept authorized writes."}</p>

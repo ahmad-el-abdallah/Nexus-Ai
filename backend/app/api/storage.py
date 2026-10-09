@@ -6,7 +6,17 @@ from datetime import UTC, datetime
 from typing import Annotated, Literal
 from urllib.parse import quote
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Request, UploadFile
+from fastapi import (
+    APIRouter,
+    Depends,
+    File,
+    Form,
+    HTTPException,
+    Query,
+    Request,
+    Response,
+    UploadFile,
+)
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -130,6 +140,9 @@ class EntryOut(BaseModel):
     size_bytes: int | None
     mime_type: str | None
     sha256: str | None
+    tags: list[str]
+    favorite: bool
+    preview_kind: Literal["none", "text", "csv", "image", "pdf", "audio", "video", "download"]
     trashed_at: datetime | None
     created_at: datetime
     updated_at: datetime
@@ -147,6 +160,71 @@ class EntryUpdate(BaseModel):
 
     name: str | None = Field(default=None, min_length=1, max_length=255)
     parent_id: str | None = Field(default=None, max_length=32)
+    description: str | None = Field(default=None, max_length=2000)
+    artifact_type: str | None = Field(default=None, max_length=40)
+    tags: list[str] | None = Field(default=None, max_length=20)
+
+
+class VersionOut(BaseModel):
+    id: str
+    number: int
+    mime_type: str
+    size_bytes: int
+    sha256: str
+    status: Literal["available", "missing", "quarantined"]
+    created_by_name: str | None
+    created_at: datetime
+
+
+class EventOut(BaseModel):
+    id: int
+    kind: str
+    level: Literal["info", "warn", "error"]
+    actor_name: str | None
+    text: str
+    created_at: datetime
+
+
+class EntryDetailOut(EntryOut):
+    original_name: str | None
+    artifact_type: str | None
+    visibility: Literal["private", "department", "shared", "company"]
+    created_by_kind: Literal["owner", "employee", "system"]
+    created_by_employee_id: str | None
+    created_by_name: str | None
+    owner_kind: Literal["company", "department", "employee"]
+    owner_id: str
+    owner_name: str
+    versions: list[VersionOut]
+    links: list[LinkOut]
+    events: list[EventOut]
+
+
+class SearchOut(BaseModel):
+    items: list[EntryOut]
+    total: int
+    offset: int
+    limit: int
+
+
+class DuplicateEntry(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    destination_workspace_id: str | None = Field(default=None, max_length=64)
+    destination_parent_id: str | None = Field(default=None, max_length=32)
+    name: str | None = Field(default=None, min_length=1, max_length=255)
+
+
+class ExportCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    entry_ids: list[str] = Field(min_length=1, max_length=100)
+
+
+class PermanentDeleteOut(BaseModel):
+    items: int
+    versions: int
+    blobs_removed: int
 
 
 class ReconcileOut(BaseModel):
@@ -284,6 +362,37 @@ async def list_entries(
         _raise(error)
 
 
+@router.get("/search", response_model=SearchOut)
+async def search_entries(
+    session: Session,
+    vault: Vault,
+    workspace_id: Annotated[str | None, Query(max_length=64)] = None,
+    q: Annotated[str | None, Query(max_length=200)] = None,
+    kind: Literal["folder", "file"] | None = None,
+    tag: Annotated[str | None, Query(max_length=64)] = None,
+    trashed: bool = False,
+    sort: Literal["name", "created", "updated", "type"] = "updated",
+    order: Literal["asc", "desc"] = "desc",
+    offset: Annotated[int, Query(ge=0)] = 0,
+    limit: Annotated[int, Query(ge=1, le=100)] = 50,
+) -> dict[str, object]:
+    try:
+        return await vault.search(
+            session,
+            workspace_id=workspace_id,
+            query=q,
+            kind=kind,
+            tag=tag,
+            trashed=trashed,
+            sort=sort,
+            descending=order == "desc",
+            offset=offset,
+            limit=limit,
+        )
+    except VaultError as error:
+        _raise(error)
+
+
 @router.post("/workspaces/{workspace_id}/folders", response_model=EntryOut, status_code=201)
 async def create_folder(
     workspace_id: str, body: FolderCreate, session: Session, vault: Vault
@@ -339,15 +448,80 @@ async def download_file(entry_id: str, session: Session, vault: Vault) -> Stream
     )
 
 
+@router.get("/entries/{entry_id}", response_model=EntryDetailOut)
+async def get_entry(entry_id: str, session: Session, vault: Vault) -> dict[str, object]:
+    try:
+        return await vault.entry_detail(session, entry_id)
+    except VaultError as error:
+        _raise(error)
+
+
+@router.get("/entries/{entry_id}/preview")
+async def preview_entry(entry_id: str, session: Session, vault: Vault) -> Response:
+    try:
+        detail = await vault.entry_detail(session, entry_id)
+        download = await vault.download(session, entry_id)
+    except VaultError as error:
+        _raise(error)
+    kind = str(detail["preview_kind"])
+    if kind in {"none", "download"}:
+        raise HTTPException(415, "A safe browser preview is not available for this file type.")
+    headers = {
+        "Content-Security-Policy": "sandbox; default-src 'none'; style-src 'none'; script-src 'none'",
+        "X-Content-Type-Options": "nosniff",
+        "Cache-Control": "private, no-store",
+    }
+    if kind in {"text", "csv"}:
+        maximum = 256 * 1024
+        content = bytearray()
+        truncated = False
+        async for chunk in download.stream:
+            remaining = maximum + 1 - len(content)
+            content.extend(chunk[:remaining])
+            if len(content) > maximum:
+                truncated = True
+                break
+        await download.stream.aclose()
+        headers["X-Preview-Truncated"] = "true" if truncated else "false"
+        return Response(
+            bytes(content[:maximum]).decode("utf-8", errors="replace"),
+            media_type="text/plain; charset=utf-8",
+            headers=headers,
+        )
+    headers.update(
+        {
+            "Content-Disposition": "inline",
+            "Content-Length": str(download.size),
+            "X-Frame-Options": "SAMEORIGIN",
+        }
+    )
+    return StreamingResponse(download.stream, media_type=download.mime_type, headers=headers)
+
+
 @router.patch("/entries/{entry_id}", response_model=EntryOut)
 async def update_entry(
     entry_id: str, body: EntryUpdate, session: Session, vault: Vault
 ) -> dict[str, object]:
-    if not body.model_fields_set or (body.model_fields_set == {"name"} and body.name is None):
-        raise HTTPException(422, "Provide a name or destination folder.")
+    if not body.model_fields_set:
+        raise HTTPException(422, "Provide an item change.")
     parent: str | object | None = body.parent_id if "parent_id" in body.model_fields_set else UNSET
+    description: str | object | None = (
+        body.description if "description" in body.model_fields_set else UNSET
+    )
+    artifact_type: str | object | None = (
+        body.artifact_type if "artifact_type" in body.model_fields_set else UNSET
+    )
+    tags: list[str] | object = body.tags or [] if "tags" in body.model_fields_set else UNSET
     try:
-        return await vault.update_entry(session, entry_id, name=body.name, parent_id=parent)
+        return await vault.update_entry(
+            session,
+            entry_id,
+            name=body.name,
+            parent_id=parent,
+            description=description,
+            artifact_type=artifact_type,
+            tags=tags,
+        )
     except VaultError as error:
         _raise(error)
 
@@ -364,6 +538,55 @@ async def trash_entry(entry_id: str, session: Session, vault: Vault) -> dict[str
 async def restore_entry(entry_id: str, session: Session, vault: Vault) -> dict[str, object]:
     try:
         return await vault.restore(session, entry_id)
+    except VaultError as error:
+        _raise(error)
+
+
+@router.post("/entries/{entry_id}/duplicate", response_model=EntryOut, status_code=201)
+async def duplicate_entry(
+    entry_id: str, body: DuplicateEntry, session: Session, vault: Vault
+) -> dict[str, object]:
+    try:
+        return await vault.duplicate(
+            session,
+            entry_id,
+            destination_workspace_id=body.destination_workspace_id,
+            destination_parent_id=body.destination_parent_id,
+            name=body.name,
+        )
+    except VaultError as error:
+        _raise(error)
+
+
+@router.post("/export")
+async def export_entries(body: ExportCreate, session: Session, vault: Vault) -> StreamingResponse:
+    try:
+        archive = await vault.export_zip(session, body.entry_ids)
+    except VaultError as error:
+        _raise(error)
+    encoded_name = quote(archive.name, safe="")
+    return StreamingResponse(
+        archive.stream,
+        media_type="application/zip",
+        headers={
+            "Content-Disposition": f"attachment; filename*=UTF-8''{encoded_name}",
+            "Content-Length": str(archive.size),
+            "X-Content-Type-Options": "nosniff",
+        },
+    )
+
+
+@router.delete("/entries/{entry_id}/permanent", response_model=PermanentDeleteOut)
+async def permanently_delete_entry(
+    entry_id: str,
+    session: Session,
+    vault: Vault,
+    confirm: bool = False,
+) -> dict[str, int]:
+    if not confirm:
+        raise HTTPException(422, "Permanent deletion requires confirm=true.")
+    try:
+        return await vault.permanent_delete(session, entry_id)
     except VaultError as error:
         _raise(error)
 

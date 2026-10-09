@@ -9,6 +9,7 @@ import { startRosterSync } from "@/world/state/employeeStore";
 
 export const NAV = [
   { href: "/", label: "Headquarters" },
+  { href: "/vault", label: "Vault" },
   { href: "/chat", label: "Chat" },
   { href: "/workflows", label: "Workflows" },
   { href: "/apps", label: "Apps" },

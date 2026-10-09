@@ -4,10 +4,10 @@ This document is the architecture and delivery tracker for the **Data Center & D
 Vault** feature. It is a separate, approval-gated feature track named **DC-1** through
 **DC-8** so that it cannot be confused with NEXUS AI's existing 16-stage roadmap.
 
-> **Current status:** DC-4 was completed on 2026-10-09 and is awaiting approval for
-> DC-5. The global product remains at **Stage 10 of 16**, with Stage 11 unapproved. The
-> 3D room, live metadata projection and owner file APIs are operational; the browser
-> explorer is not.
+> **Current status:** DC-5 was completed on 2026-10-09 and is awaiting approval for
+> DC-6. The global product remains at **Stage 10 of 16**, with Stage 11 unapproved. The
+> 3D room, live metadata projection, owner file APIs and responsive Vault browser are
+> operational.
 
 ## Product contract
 
@@ -39,9 +39,9 @@ reported, then stop for the owner's approval before the next one begins.
 | DC-1 | Project inspection, storage architecture, configuration and schema foundation | ✅ Complete |
 | DC-2 | Visible 3D Data Center room, 2D fallback and backend-connected read-only overview | ✅ Complete |
 | DC-3 | Real storage backend: upload, download, folders, rename, move, trash and validation | ✅ Complete |
-| DC-4 | Dynamic department workspaces, quotas, permissions and task/app associations | ✅ Complete — awaiting approval for DC-5 |
-| DC-5 | Professional file explorer, search, previews, metadata and ZIP export | ⏳ Not started |
-| DC-6 | Automatic registration of real AI employee artifacts | ⏳ Not started |
+| DC-4 | Dynamic department workspaces, quotas, permissions and task/app associations | ✅ Complete |
+| DC-5 | Professional file explorer, search, previews, metadata and ZIP export | ✅ Complete — awaiting approval for DC-6 |
+| DC-6 | Automatic registration of real AI employee artifacts | ⏳ Not started — approval required |
 | DC-7 | Engineering project viewer, immutable versions, restore, diffs and dashboards | ⏳ Not started |
 | DC-8 | Backup/recovery, integrity, permission boundaries, performance and final polish | ⏳ Not started |
 
@@ -349,13 +349,72 @@ Node toolchain so Windows application-control policy could not block native pack
 | Data Center focused browser flow and screenshot | **PASS** — visible room, live grant/link counts and honest DC-5 explorer state |
 | Full Playwright browser suite | **PARTIAL** — 53 passed and the same pre-existing suspended-walk test failed under software GL because the employee remained `walking` instead of reaching `away`. The Data Center and all other desktop, mobile and no-WebGL tests passed. |
 
+## DC-5 implementation
+
+- `/vault` is a real, responsive three-pane browser connected to the permission-enforced
+  Vault service. Its left pane exposes All files, Recent, Favorites, Trash and every
+  dynamically provisioned workspace; the center pane provides folder navigation,
+  incremental results, search, type filter, sorting and grid/list modes; the inspector
+  exposes safe preview, editable metadata, versions, provenance links and audit activity.
+- File and folder controls cover create, upload, verified download, rename, description,
+  tags, favorite, move, immutable-blob duplicate/copy, multi-select ZIP export, Trash,
+  restore and confirmed permanent deletion. Empty states remain honest and never insert
+  sample files.
+- Metadata search is bounded and permission filtered. It matches logical names/paths,
+  descriptions, owners/creators, tags, links, workspace/department keys and MIME types,
+  with deterministic sorting and pagination.
+- Text, code, CSV, HTML and SVG are previewed only as bounded escaped text. Supported
+  raster image, PDF, audio and video bytes are streamed inline with `nosniff`, no-store
+  and restrictive CSP headers. Office and unknown formats provide metadata and verified
+  download without attempting execution.
+- ZIP export accepts 1–100 selections, expands no more than 5,000 accessible entries,
+  uses logical workspace-relative paths, validates every download and streams from a
+  spooled temporary handle. It never exposes backend paths or stores the archive as a
+  Vault artifact.
+- The Data Center panel and the persistent application navigation both open `/vault`.
+  On phones, the workspace navigator is bounded and scrollable so the file browser stays
+  reachable without horizontal overflow.
+
+### DC-5 owner routes
+
+| Route | Behavior |
+| --- | --- |
+| `GET /api/storage/search` | Permission-filtered metadata search, filters, sorting and bounded pagination |
+| `GET /api/storage/entries/{id}` | Entry metadata, tags/favorite, current versions, links and recent activity |
+| `GET /api/storage/entries/{id}/preview` | Bounded safe-text or restricted inline-media preview |
+| `PATCH /api/storage/entries/{id}` | Rename/move plus description, artifact type and normalized tags |
+| `POST /api/storage/entries/{id}/duplicate` | Copy a file or complete folder subtree using new immutable blobs |
+| `POST /api/storage/export` | Stream a temporary ZIP for selected accessible entries |
+| `DELETE /api/storage/entries/{id}/permanent?confirm=true` | Permanently remove an item already in Trash and its blobs |
+
+## DC-5 verification
+
+Backend and full-stack checks run only in the isolated `/root/nexus-ai-dev` WSL copy
+with temporary databases and storage roots. Visual artifacts are copied back to
+`.artifacts/e2e/` for manual inspection. Final verification results are recorded below
+after the staged-tree reproduction.
+
+| Check | Result |
+| --- | --- |
+| DC-5 search, preview, copy, ZIP and deletion tests | **PASS** — 3 focused tests; 16 combined storage tests |
+| Complete backend suite | **PASS** — 262 passed, 4 skipped |
+| Backend Ruff; frontend ESLint and TypeScript | **PASS** |
+| Frontend unit suite | **PASS** — 189 tests |
+| Next.js production build | **PASS** — 22 routes generated |
+| Isolated full-stack smoke test | **PASS** — search, preview, ZIP, download, Trash and permanent deletion plus existing checks |
+| Clean staged-tree setup, migrations and smoke test | **PASS** — fresh dependencies, database and storage reproduced from the staged files |
+| Focused browser workflow | **PASS** — complete file lifecycle and no console/HTTP errors |
+| Mobile browser check | **PASS** — no horizontal overflow; bounded workspace navigator |
+| Visual inspection | **PASS** — desktop and phone screenshots reviewed |
+| Full Playwright browser suite | **PARTIAL** — 55 passed; the same pre-existing suspended-walk test failed under software GL because the employee remained `walking` instead of reaching `away`. Every Vault, Data Center, mobile and no-WebGL test passed. |
+
 ## Current limitations
 
 - HTTP routes act as the local company owner because NEXUS has no human authentication
   system. Internal employee operations are permission checked, but no agent tool exposes
   them until automatic artifact registration in DC-6.
-- There is no browser file explorer, per-rack health, writable room dashboard or mobile
-  Vault interface yet.
+- The responsive browser file explorer is implemented; per-rack health and a writable
+  room dashboard are not.
 - Existing chat, app and code-run files have not been migrated or registered.
 - Automatic AI artifact tools, historical version restore, browser sharing workflows and
   backup are not implemented. Reconciliation is manual and non-destructive.

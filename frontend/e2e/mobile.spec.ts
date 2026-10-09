@@ -21,3 +21,13 @@ test("the headquarters fits a phone screen", async ({ page }) => {
   expect(box.y).toBeGreaterThan(viewport.height * 0.4);
   await page.screenshot({ path: "../.artifacts/e2e/mobile.png" });
 });
+
+test("the Digital Vault fits a phone screen", async ({ page }) => {
+  await page.goto("/vault");
+  await expect(page.getByRole("heading", { name: "Digital Vault" })).toBeVisible();
+  const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+  expect(overflow).toBeLessThanOrEqual(0);
+  await expect(page.getByRole("complementary", { name: "Vault navigation" })).toBeVisible();
+  await expect(page.getByPlaceholder(/Search names/)).toBeVisible();
+  await page.screenshot({ path: "../.artifacts/e2e/digital-vault-dc5-mobile.png", fullPage: true });
+});

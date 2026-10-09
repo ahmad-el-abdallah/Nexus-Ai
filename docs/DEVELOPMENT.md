@@ -117,15 +117,18 @@ project directory, so stop `make dev` first.
 
 Shell environment variables override `.env` values.
 
-#### Data Center storage (DC-4 workspace and access controls)
+#### Data Center storage (DC-5 browser and file operations)
 
 These server-side settings are implemented and validated. `GET /api/storage/overview`
 returns safe aggregate metadata for the 3D Data Center panel without exposing file
 names, storage keys or server paths. Owner-facing routes under `/api/storage` now list
 workspaces and entries, change workspace quotas/state, manage auditable employee or
 department grants, create validated task/app links, create folders, stream uploads and
-downloads, rename/move items, move trees to Trash, restore them and run non-destructive reconciliation. The browser
-explorer is not connected until DC-5. Implementation and test evidence are tracked in
+downloads, rename/move/copy items, edit descriptions/tags/favorites, search metadata,
+serve safe previews, export ZIP archives, move trees to Trash, restore or permanently
+delete confirmed Trash items, and run non-destructive reconciliation. The responsive
+browser explorer is available at `/vault` and from the Data Center room. Implementation
+and test evidence are tracked in
 [`DATA_CENTER.md`](DATA_CENTER.md).
 
 | Variable | Default | Purpose |
@@ -147,6 +150,12 @@ configured allowlist. Size and workspace quota limits are enforced while streami
 Trash does not free quota or delete immutable blobs. `POST /api/storage/maintenance/reconcile`
 checks every recorded SHA-256/size, marks missing or corrupt versions unavailable and
 reports orphaned/unsafe objects without deleting them.
+
+Preview responses never execute stored HTML or SVG: text/code/CSV are returned as
+bounded `text/plain`, supported media is streamed with restrictive headers, and unknown
+or office formats require verified download. `POST /api/storage/export` accepts 1–100
+opaque entry IDs, expands at most 5,000 accessible entries and streams a temporary ZIP.
+Permanent deletion requires both prior Trash state and `confirm=true`.
 
 Every department row receives a stable `ws_department:{key}` workspace at startup and
 whenever storage workspaces are read. The HTTP surface is the trusted local owner;

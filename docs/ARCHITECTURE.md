@@ -720,8 +720,10 @@ The Data Center is tracked independently as **DC-1 through DC-8** in
 Engineering to the shared 3D/2D layout and a `/api/storage/overview` projection. DC-3
 adds the real owner-facing Vault API and local blob service. DC-4 adds automatic
 workspace provisioning, quota/state administration, trusted employee actors, scoped
-grants and validated links to real tasks and apps. It does not advance the
-global 16-stage roadmap; the browser explorer is not claimed before DC-5.
+grants and validated links to real tasks and apps. DC-5 adds the `/vault` browser and
+bounded metadata search, safe previews, metadata/tags/favorites, immutable-blob copies,
+confirmed Trash deletion and streamed ZIP export. It does not advance the global
+16-stage roadmap.
 
 Searchable metadata lives in the existing database and immutable bytes live under
 opaque keys in the configurable local storage root. `VaultService` coordinates both;
@@ -742,6 +744,14 @@ normalised and case-folded for uniqueness, object keys are generated internally,
 refuse symbolic links and downloads receive `nosniff`. Rack meshes remain fixed physical
 equipment; displayed counts, byte usage, configuration and activity state come from the
 database/configuration endpoint and degrade honestly when the backend is unavailable.
+
+The browser uses a three-pane composition: views/workspaces, searchable file content,
+and an inspector with preview, metadata, versions, links and audit activity. Text, code
+and CSV are decoded as bounded plain text; HTML and SVG are never executed. Raster
+images, PDF, audio and video use `nosniff`, no-store responses and a restrictive CSP;
+unknown and office formats expose metadata and verified download only. ZIP export builds
+in a spooled temporary handle and streams the result, so archive bytes are not retained
+in application memory or the Vault.
 
 ### Performance budget and measurements
 

@@ -84,12 +84,24 @@ upload_code="${upload##*$'\n'}"
 upload_body="${upload%$'\n'*}"
 upload_id="$(sed -n 's/.*"id":"\([^"]*\)".*/\1/p' <<<"$upload_body")"
 if [[ "$upload_code" == "201" && -n "$upload_id" ]]; then
-  printf '  \033[32mPASS\033[0m  %s\n' "POST/download/delete Digital Vault file"
+  printf '  \033[32mPASS\033[0m  %s\n' "POST/download/search/preview/export/delete Digital Vault file"
   if ! curl -fs "$API/api/storage/entries/$upload_id/download" -o "$TMP/vault-downloaded.txt" || ! cmp -s "$TMP/vault-smoke.txt" "$TMP/vault-downloaded.txt"; then
     printf '  \033[31mFAIL\033[0m  %s\n' "Digital Vault download bytes differ"; failures=$((failures + 1))
   fi
+  if ! curl -fs "$API/api/storage/search?workspace_id=ws_company&q=vault-smoke" | grep -q '"total":1'; then
+    printf '  \033[31mFAIL\033[0m  %s\n' "Digital Vault metadata search failed"; failures=$((failures + 1))
+  fi
+  if ! curl -fs "$API/api/storage/entries/$upload_id/preview" -o "$TMP/vault-preview.txt" || ! cmp -s "$TMP/vault-smoke.txt" "$TMP/vault-preview.txt"; then
+    printf '  \033[31mFAIL\033[0m  %s\n' "Digital Vault safe preview differs"; failures=$((failures + 1))
+  fi
+  if ! curl -fs -H 'content-type: application/json' -d '{"entry_ids":["'"$upload_id"'"]}' "$API/api/storage/export" -o "$TMP/vault-export.zip" || [[ "$(head -c 2 "$TMP/vault-export.zip")" != "PK" ]]; then
+    printf '  \033[31mFAIL\033[0m  %s\n' "Digital Vault ZIP export failed"; failures=$((failures + 1))
+  fi
   if ! curl -fs -X DELETE "$API/api/storage/entries/$upload_id" -o /dev/null; then
     printf '  \033[31mFAIL\033[0m  %s\n' "Digital Vault trash failed"; failures=$((failures + 1))
+  fi
+  if ! curl -fs -X DELETE "$API/api/storage/entries/$upload_id/permanent?confirm=true" -o /dev/null; then
+    printf '  \033[31mFAIL\033[0m  %s\n' "Digital Vault permanent delete failed"; failures=$((failures + 1))
   fi
 else
   printf '  \033[31mFAIL\033[0m  %s (got %s)\n' "POST Digital Vault file" "$upload_code"; failures=$((failures + 1))
@@ -98,6 +110,7 @@ fi
 echo "Frontend:"
 check "GET /healthz"          200 "$WEB/healthz"          '"status":"ok"'
 check "GET / (headquarters)" 200 "$WEB/"                 'NEXUS AI'
+check "GET /vault"            200 "$WEB/vault"            'Digital Vault'
 check "GET /system"           200 "$WEB/system"           'System status'
 check "GET /departments"      200 "$WEB/departments"      'Departments'
 check "GET /org"              200 "$WEB/org"              'Org chart'

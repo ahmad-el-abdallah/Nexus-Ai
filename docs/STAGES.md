@@ -25,9 +25,9 @@ reported, and the next stage starts only after the owner's explicit approval.
 ### Separate Data Center feature track
 
 The Data Center & Digital Vault is tracked as **DC-1 through DC-8** in
-[`DATA_CENTER.md`](DATA_CENTER.md). DC-4's dynamic workspaces, enforceable quota/state
-controls, actor-aware grants and task/app associations are complete and awaiting
-approval for DC-5. This feature track does not
+[`DATA_CENTER.md`](DATA_CENTER.md). DC-5's real file browser, safe previews, bounded
+search, metadata controls and ZIP export are complete and awaiting approval for DC-6.
+This feature track does not
 change the global status above: Stage 10 remains complete and Stage 11 has not been
 approved.
 

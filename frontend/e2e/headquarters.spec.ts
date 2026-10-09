@@ -45,7 +45,7 @@ test.describe("3D headquarters", () => {
     await expect(panel).toContainText("Linked items0");
     await expect(panel).toContainText("All workspaces currently accept authorized writes.");
     await expect(panel.getByText("Storage operations are available through the owner API.")).toBeVisible();
-    await expect(panel.getByRole("button", { name: /Digital Vault explorer/ })).toBeDisabled();
+    await expect(panel.getByRole("link", { name: /Open Digital Vault explorer/ })).toHaveAttribute("href", "/vault");
     await settle(page);
     await page.screenshot({ path: "../.artifacts/e2e/data-center-dc4.png" });
   });

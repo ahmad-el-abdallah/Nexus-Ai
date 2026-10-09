@@ -138,7 +138,7 @@ describe("RoomPanel", () => {
     expect(panel).toHaveTextContent("Stored1.5 KiB");
     expect(panel).toHaveTextContent("No storage activity has been recorded yet");
     expect(within(panel).getByText("Storage operations are available through the owner API.")).toBeInTheDocument();
-    expect(within(panel).getByRole("button", { name: /Digital Vault explorer/ })).toBeDisabled();
+    expect(within(panel).getByRole("link", { name: /Open Digital Vault explorer/ })).toHaveAttribute("href", "/vault");
     expect(panel).not.toHaveTextContent("Team");
   });
 });

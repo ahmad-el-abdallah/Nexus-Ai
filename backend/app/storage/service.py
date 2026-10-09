@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+import asyncio
 import mimetypes
 import re
+import tempfile
+import zipfile
 from collections.abc import AsyncIterator, Awaitable, Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -11,7 +14,7 @@ from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
-from sqlalchemy import func, select
+from sqlalchemy import delete, func, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -28,6 +31,7 @@ from app.models import (
     StorageGrant,
     StorageGranteeKind,
     StorageLink,
+    StorageTag,
     StorageVersion,
     StorageVersionStatus,
     StorageWorkspace,
@@ -48,6 +52,13 @@ MIME_PATTERN = re.compile(r"[a-zA-Z0-9][a-zA-Z0-9.+-]*/[a-zA-Z0-9][a-zA-Z0-9.+-]
 class VaultDownload:
     name: str
     mime_type: str
+    size: int
+    stream: AsyncIterator[bytes]
+
+
+@dataclass(frozen=True)
+class VaultArchive:
+    name: str
     size: int
     stream: AsyncIterator[bytes]
 
@@ -362,6 +373,419 @@ class VaultService:
         await session.refresh(link)
         return self._link_view(link)
 
+    async def search(
+        self,
+        session: AsyncSession,
+        *,
+        workspace_id: str | None,
+        query: str | None,
+        kind: str | None,
+        tag: str | None,
+        trashed: bool,
+        sort: str,
+        descending: bool,
+        offset: int,
+        limit: int,
+        actor: StorageActor = OWNER_ACTOR,
+    ) -> dict[str, Any]:
+        """Search safe metadata with bounded, incremental results."""
+        await self.sync_workspaces(session)
+        workspace_ids = {item["id"] for item in await self.workspaces(session, actor=actor)}
+        if workspace_id:
+            if workspace_id not in workspace_ids:
+                raise VaultError(404, "Storage workspace not found.")
+            workspace_ids = {workspace_id}
+        conditions: list[Any] = [StorageEntry.workspace_id.in_(workspace_ids)]
+        conditions.append(
+            StorageEntry.trashed_at.is_not(None) if trashed else StorageEntry.trashed_at.is_(None)
+        )
+        if kind:
+            conditions.append(StorageEntry.kind == kind)
+        if tag:
+            conditions.append(
+                StorageEntry.id.in_(
+                    select(StorageTag.entry_id).where(StorageTag.tag_key == tag.casefold())
+                )
+            )
+        needle = (query or "").strip().casefold()
+        if needle:
+            pattern = f"%{self._like(needle)}%"
+            conditions.append(
+                or_(
+                    func.lower(StorageEntry.name).like(pattern, escape="\\"),
+                    func.lower(StorageEntry.path).like(pattern, escape="\\"),
+                    func.lower(func.coalesce(StorageEntry.description, "")).like(
+                        pattern, escape="\\"
+                    ),
+                    func.lower(StorageEntry.owner_name).like(pattern, escape="\\"),
+                    func.lower(func.coalesce(StorageEntry.created_by_name, "")).like(
+                        pattern, escape="\\"
+                    ),
+                    func.lower(StorageEntry.workspace_id).like(pattern, escape="\\"),
+                    StorageEntry.id.in_(
+                        select(StorageVersion.entry_id).where(
+                            func.lower(StorageVersion.mime_type).like(pattern, escape="\\")
+                        )
+                    ),
+                    StorageEntry.id.in_(
+                        select(StorageTag.entry_id).where(
+                            func.lower(StorageTag.tag).like(pattern, escape="\\")
+                        )
+                    ),
+                    StorageEntry.id.in_(
+                        select(StorageLink.entry_id).where(
+                            or_(
+                                func.lower(StorageLink.target_id).like(pattern, escape="\\"),
+                                func.lower(func.coalesce(StorageLink.label, "")).like(
+                                    pattern, escape="\\"
+                                ),
+                            )
+                        )
+                    ),
+                )
+            )
+        order_columns = {
+            "name": StorageEntry.name,
+            "created": StorageEntry.created_at,
+            "updated": StorageEntry.updated_at,
+            "type": StorageEntry.kind,
+        }
+        order_column = order_columns.get(sort, StorageEntry.updated_at)
+        order = order_column.desc() if descending else order_column.asc()
+        total = int(
+            await session.scalar(select(func.count()).select_from(StorageEntry).where(*conditions))
+            or 0
+        )
+        rows = list(
+            await session.scalars(
+                select(StorageEntry)
+                .where(*conditions)
+                .order_by(order, StorageEntry.id)
+                .offset(offset)
+                .limit(limit)
+            )
+        )
+        return {
+            "items": [await self.entry_view(session, row) for row in rows],
+            "total": total,
+            "offset": offset,
+            "limit": limit,
+        }
+
+    async def entry_detail(
+        self,
+        session: AsyncSession,
+        entry_id: str,
+        *,
+        actor: StorageActor = OWNER_ACTOR,
+    ) -> dict[str, Any]:
+        entry = await self._entry(session, entry_id)
+        workspace = await self._workspace(session, entry.workspace_id)
+        await self._require(session, actor, workspace, "read", entry)
+        result = await self.entry_view(session, entry)
+        tags = list(
+            await session.scalars(
+                select(StorageTag).where(StorageTag.entry_id == entry.id).order_by(StorageTag.tag)
+            )
+        )
+        versions = list(
+            await session.scalars(
+                select(StorageVersion)
+                .where(StorageVersion.entry_id == entry.id)
+                .order_by(StorageVersion.number.desc())
+            )
+        )
+        links = list(
+            await session.scalars(
+                select(StorageLink)
+                .where(StorageLink.entry_id == entry.id)
+                .order_by(StorageLink.created_at.desc())
+            )
+        )
+        events = list(
+            await session.scalars(
+                select(StorageEvent)
+                .where(StorageEvent.entry_id == entry.id)
+                .order_by(StorageEvent.created_at.desc(), StorageEvent.id.desc())
+                .limit(50)
+            )
+        )
+        result.update(
+            {
+                "original_name": entry.original_name,
+                "artifact_type": entry.artifact_type,
+                "visibility": entry.visibility,
+                "created_by_kind": entry.created_by_kind,
+                "created_by_employee_id": entry.created_by_employee_id,
+                "created_by_name": entry.created_by_name,
+                "owner_kind": entry.owner_kind,
+                "owner_id": entry.owner_id,
+                "owner_name": entry.owner_name,
+                "tags": [tag.tag for tag in tags],
+                "favorite": any(tag.tag_key == "favorite" for tag in tags),
+                "preview_kind": self._preview_kind(entry, versions[0] if versions else None),
+                "versions": [
+                    {
+                        "id": version.id,
+                        "number": version.number,
+                        "mime_type": version.mime_type,
+                        "size_bytes": version.size_bytes,
+                        "sha256": version.sha256,
+                        "status": version.status,
+                        "created_by_name": version.created_by_name,
+                        "created_at": version.created_at,
+                    }
+                    for version in versions
+                ],
+                "links": [self._link_view(link) for link in links],
+                "events": [
+                    {
+                        "id": event.id,
+                        "kind": event.kind,
+                        "level": event.level,
+                        "actor_name": event.actor_name,
+                        "text": event.text,
+                        "created_at": event.created_at,
+                    }
+                    for event in events
+                ],
+            }
+        )
+        return result
+
+    async def duplicate(
+        self,
+        session: AsyncSession,
+        entry_id: str,
+        *,
+        destination_workspace_id: str | None,
+        destination_parent_id: str | None,
+        name: str | None,
+        actor: StorageActor = OWNER_ACTOR,
+    ) -> dict[str, Any]:
+        source = await self._entry(session, entry_id)
+        source_workspace = await self._workspace(session, source.workspace_id)
+        await self._require(session, actor, source_workspace, "read", source)
+        if source.trashed_at is not None:
+            raise VaultError(409, "Restore this item before copying it.")
+        workspace_id = destination_workspace_id or source.workspace_id
+        destination_workspace = await self._workspace(session, workspace_id, write=True)
+        parent = await self._parent(session, workspace_id, destination_parent_id)
+        await self._require(session, actor, destination_workspace, "write", parent)
+        safe_name = (
+            self._safe_name(name)
+            if name
+            else await self._copy_name(session, workspace_id, parent, source.name)
+        )
+        root_path = self._child_path(parent, safe_name)
+        await self._ensure_available_path(session, workspace_id, root_path)
+        source_rows = sorted(
+            await self._subtree(session, source), key=lambda row: row.path.count("/")
+        )
+        if len(source_rows) > 5000:
+            raise VaultError(413, "This folder is too large to copy in one operation.")
+        source_versions: dict[str, StorageVersion] = {}
+        total_bytes = 0
+        for row in source_rows:
+            if row.trashed_at is not None:
+                raise VaultError(409, "Restore this folder before copying it.")
+            version = await self._current_version(session, row)
+            if version:
+                if version.status != StorageVersionStatus.AVAILABLE.value:
+                    raise VaultError(409, f"{row.name} is not available to copy.")
+                source_versions[row.id] = version
+                total_bytes += version.size_bytes
+        if total_bytes > self._quota(destination_workspace) - await self._usage(
+            session, workspace_id
+        ):
+            raise VaultError(413, "The copy would exceed the destination workspace quota.")
+        owner_kind, owner_id, owner_name = await self._owner(session, destination_workspace)
+        id_map: dict[str, str] = {}
+        created_blobs: list[str] = []
+        root_new: StorageEntry | None = None
+        try:
+            for row in source_rows:
+                new_id = self._id("ste")
+                id_map[row.id] = new_id
+                suffix = "" if row.id == source.id else row.path[len(source.path) :]
+                new_path = logical_path(f"{root_path}{suffix}")
+                copied = StorageEntry(
+                    id=new_id,
+                    workspace_id=workspace_id,
+                    parent_id=(
+                        destination_parent_id
+                        if row.id == source.id
+                        else id_map.get(row.parent_id or "")
+                    ),
+                    kind=row.kind,
+                    path=new_path,
+                    path_key=logical_path_key(new_path),
+                    name=safe_name if row.id == source.id else row.name,
+                    original_name=row.original_name,
+                    description=row.description,
+                    artifact_type=row.artifact_type,
+                    visibility=(
+                        "company"
+                        if destination_workspace.scope == StorageWorkspaceScope.COMPANY.value
+                        else "department"
+                    ),
+                    status=row.status,
+                    current_version_number=1 if row.id in source_versions else 0,
+                    created_by_kind=actor.kind,
+                    created_by_employee_id=actor.employee_id,
+                    created_by_name=actor.name,
+                    owner_kind=owner_kind,
+                    owner_id=owner_id,
+                    owner_name=owner_name,
+                )
+                session.add(copied)
+                await session.flush()
+                if root_new is None:
+                    root_new = copied
+                version = source_versions.get(row.id)
+                if version:
+                    blob = await self.blobs.clone(version.storage_key, version.size_bytes)
+                    created_blobs.append(blob.key)
+                    session.add(
+                        StorageVersion(
+                            id=self._id("stv"),
+                            entry_id=copied.id,
+                            number=1,
+                            backend=self.settings.storage_backend.value,
+                            storage_key=blob.key,
+                            original_name=copied.name,
+                            mime_type=version.mime_type,
+                            size_bytes=blob.size,
+                            sha256=blob.sha256,
+                            status=StorageVersionStatus.AVAILABLE.value,
+                            change_description=f"Copied from {source.path}",
+                            created_by_kind=actor.kind,
+                            created_by_employee_id=actor.employee_id,
+                            created_by_name=actor.name,
+                        )
+                    )
+                for tag in await session.scalars(
+                    select(StorageTag).where(StorageTag.entry_id == row.id)
+                ):
+                    session.add(StorageTag(entry_id=copied.id, tag_key=tag.tag_key, tag=tag.tag))
+            assert root_new is not None
+            session.add(
+                self._event(
+                    workspace_id,
+                    root_new,
+                    "entry_copied",
+                    f"Copied {source.name} to {root_new.path}.",
+                    actor=actor,
+                    details={"source_entry_id": source.id, "items": len(source_rows)},
+                )
+            )
+            await self._commit_conflict(session, "The destination already contains this copy.")
+        except BaseException:
+            await session.rollback()
+            for key in created_blobs:
+                await self.blobs.remove(key)
+            raise
+        await session.refresh(root_new)
+        return await self.entry_view(session, root_new)
+
+    async def export_zip(
+        self,
+        session: AsyncSession,
+        entry_ids: list[str],
+        *,
+        actor: StorageActor = OWNER_ACTOR,
+    ) -> VaultArchive:
+        if not entry_ids or len(entry_ids) > 100:
+            raise VaultError(422, "Select between 1 and 100 items to export.")
+        selected: list[StorageEntry] = []
+        included: dict[str, StorageEntry] = {}
+        for entry_id in dict.fromkeys(entry_ids):
+            entry = await self._entry(session, entry_id)
+            workspace = await self._workspace(session, entry.workspace_id)
+            await self._require(session, actor, workspace, "read", entry)
+            if entry.trashed_at is not None:
+                raise VaultError(409, "Restore items before exporting them.")
+            selected.append(entry)
+            for row in await self._subtree(session, entry):
+                if row.trashed_at is None:
+                    included[row.id] = row
+        if len(included) > 5000:
+            raise VaultError(413, "This export contains too many items.")
+        # The response iterator owns and closes this handle after streaming completes.
+        handle = tempfile.SpooledTemporaryFile(  # noqa: SIM115
+            max_size=8 * 1024 * 1024, mode="w+b"
+        )
+        try:
+            with zipfile.ZipFile(handle, "w", zipfile.ZIP_DEFLATED, allowZip64=True) as archive:
+                for entry in sorted(included.values(), key=lambda row: row.path):
+                    workspace_prefix = (
+                        "company"
+                        if entry.workspace_id == "ws_company"
+                        else entry.workspace_id.replace("ws_department:", "")
+                    )
+                    archive_name = f"{workspace_prefix}/{entry.path}"
+                    if entry.kind == StorageEntryKind.FOLDER.value:
+                        archive.writestr(f"{archive_name}/", b"")
+                        continue
+                    download = await self.download(session, entry.id, actor=actor)
+                    with archive.open(archive_name, "w") as destination:
+                        async for chunk in download.stream:
+                            destination.write(chunk)
+            size = handle.tell()
+            handle.seek(0)
+        except BaseException:
+            handle.close()
+            raise
+
+        async def chunks() -> AsyncIterator[bytes]:
+            try:
+                while chunk := await asyncio.to_thread(handle.read, 1024 * 1024):
+                    yield chunk
+            finally:
+                handle.close()
+
+        name = f"{selected[0].name}.zip" if len(selected) == 1 else "nexus-vault-export.zip"
+        return VaultArchive(name=name, size=size, stream=chunks())
+
+    async def permanent_delete(
+        self,
+        session: AsyncSession,
+        entry_id: str,
+        *,
+        actor: StorageActor = OWNER_ACTOR,
+    ) -> dict[str, int]:
+        entry = await self._entry(session, entry_id)
+        workspace = await self._workspace(session, entry.workspace_id, write=True)
+        await self._require(session, actor, workspace, "manage", entry)
+        if entry.trashed_at is None:
+            raise VaultError(409, "Move this item to Trash before permanently deleting it.")
+        rows = await self._subtree(session, entry)
+        versions = list(
+            await session.scalars(
+                select(StorageVersion).where(StorageVersion.entry_id.in_([row.id for row in rows]))
+            )
+        )
+        session.add(
+            self._workspace_event(
+                entry.workspace_id,
+                "entry_permanently_deleted",
+                f"Permanently deleted {entry.name} and {len(rows) - 1} descendants.",
+                actor,
+                {"items": len(rows), "versions": len(versions)},
+            )
+        )
+        for row in sorted(rows, key=lambda item: item.path.count("/"), reverse=True):
+            await session.execute(delete(StorageEntry).where(StorageEntry.id == row.id))
+        await session.commit()
+        removed = 0
+        for version in versions:
+            try:
+                await self.blobs.remove(version.storage_key)
+                removed += 1
+            except BlobUnsafeError:
+                pass
+        return {"items": len(rows), "versions": len(versions), "blobs_removed": removed}
+
     async def entries(
         self,
         session: AsyncSession,
@@ -608,6 +1032,9 @@ class VaultService:
         *,
         name: str | None,
         parent_id: str | object | None = UNSET,
+        description: str | object | None = UNSET,
+        artifact_type: str | object | None = UNSET,
+        tags: list[str] | object = UNSET,
         actor: StorageActor = OWNER_ACTOR,
     ) -> dict[str, Any]:
         entry = await self._entry(session, entry_id)
@@ -653,6 +1080,23 @@ class VaultService:
         for row in subtree:
             row.path = proposed[row.id]
             row.path_key = logical_path_key(row.path)
+        if description is not UNSET:
+            assert description is None or isinstance(description, str)
+            entry.description = description.strip() if description and description.strip() else None
+        if artifact_type is not UNSET:
+            assert artifact_type is None or isinstance(artifact_type, str)
+            entry.artifact_type = (
+                artifact_type.strip().casefold()
+                if artifact_type and artifact_type.strip()
+                else None
+            )
+        if tags is not UNSET:
+            assert isinstance(tags, list)
+            normalized = self._safe_tags(tags)
+            await session.execute(delete(StorageTag).where(StorageTag.entry_id == entry.id))
+            session.add_all(
+                [StorageTag(entry_id=entry.id, tag_key=key, tag=value) for key, value in normalized]
+            )
         session.add(
             self._event(
                 entry.workspace_id,
@@ -796,6 +1240,13 @@ class VaultService:
 
     async def entry_view(self, session: AsyncSession, entry: StorageEntry) -> dict[str, Any]:
         version = await self._current_version(session, entry)
+        tags = list(
+            await session.scalars(
+                select(StorageTag.tag)
+                .where(StorageTag.entry_id == entry.id)
+                .order_by(StorageTag.tag)
+            )
+        )
         return {
             "id": entry.id,
             "workspace_id": entry.workspace_id,
@@ -809,6 +1260,9 @@ class VaultService:
             "size_bytes": version.size_bytes if version else None,
             "mime_type": version.mime_type if version else None,
             "sha256": version.sha256 if version else None,
+            "tags": tags,
+            "favorite": any(tag.casefold() == "favorite" for tag in tags),
+            "preview_kind": self._preview_kind(entry, version),
             "trashed_at": entry.trashed_at,
             "created_at": entry.created_at,
             "updated_at": entry.updated_at,
@@ -1075,6 +1529,78 @@ class VaultService:
             if workspace.quota_bytes is not None
             else self.settings.storage_department_quota_bytes
         )
+
+    async def _copy_name(
+        self,
+        session: AsyncSession,
+        workspace_id: str,
+        parent: StorageEntry | None,
+        source_name: str,
+    ) -> str:
+        suffix = Path(source_name).suffix if "." in source_name else ""
+        stem = source_name[: -len(suffix)] if suffix else source_name
+        for number in range(1, 1001):
+            label = " copy" if number == 1 else f" copy {number}"
+            candidate = self._safe_name(f"{stem}{label}{suffix}")
+            path = self._child_path(parent, candidate)
+            existing = await session.scalar(
+                select(StorageEntry.id).where(
+                    StorageEntry.workspace_id == workspace_id,
+                    StorageEntry.path_key == logical_path_key(path),
+                )
+            )
+            if existing is None:
+                return candidate
+        raise VaultError(409, "No available copy name could be generated.")
+
+    @staticmethod
+    def _safe_tags(tags: list[str]) -> list[tuple[str, str]]:
+        if len(tags) > 20:
+            raise VaultError(422, "An item can have at most 20 tags.")
+        normalized: dict[str, str] = {}
+        for raw in tags:
+            value = raw.strip()
+            if not value or len(value) > 64 or any(ord(char) < 32 for char in value):
+                raise VaultError(422, "Tags must be 1 to 64 printable characters.")
+            normalized.setdefault(value.casefold(), value)
+        return sorted(normalized.items())
+
+    @staticmethod
+    def _preview_kind(entry: StorageEntry, version: StorageVersion | None) -> str:
+        if entry.kind == StorageEntryKind.FOLDER.value or version is None:
+            return "none"
+        extension = Path(entry.name).suffix.casefold()
+        mime = version.mime_type.casefold()
+        if extension == ".csv":
+            return "csv"
+        if extension in {
+            ".txt",
+            ".md",
+            ".py",
+            ".js",
+            ".ts",
+            ".tsx",
+            ".jsx",
+            ".html",
+            ".css",
+            ".json",
+            ".sql",
+            ".svg",
+        } or mime.startswith("text/"):
+            return "text"
+        if extension in {".png", ".jpg", ".jpeg", ".webp"}:
+            return "image"
+        if extension == ".pdf":
+            return "pdf"
+        if extension in {".mp3", ".wav"}:
+            return "audio"
+        if extension in {".mp4", ".webm"}:
+            return "video"
+        return "download"
+
+    @staticmethod
+    def _like(value: str) -> str:
+        return value.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
 
     @staticmethod
     def _safe_name(value: str | None) -> str:

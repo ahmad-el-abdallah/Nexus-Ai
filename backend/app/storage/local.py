@@ -96,6 +96,21 @@ class LocalBlobStore:
         if path.exists():
             await asyncio.to_thread(path.unlink)
 
+    async def clone(self, key: str, limit: int) -> StoredBlob:
+        """Create a new immutable object from an existing safe object."""
+        source = self.chunks(key)
+
+        async def read(_size: int) -> bytes:
+            try:
+                return await anext(source)
+            except StopAsyncIteration:
+                return b""
+
+        try:
+            return await self.put(read, limit)
+        finally:
+            await source.aclose()
+
     async def checksum(self, key: str) -> tuple[int, str]:
         path = self._path(key)
         try:

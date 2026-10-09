@@ -18,13 +18,14 @@ screen is simulated.
 > writes the files of their role, and the stored app can be downloaded, run here in a
 > sandbox, or changed. See [`docs/STAGES.md`](docs/STAGES.md).
 
-> **Data Center feature track:** DC-4 is complete and awaiting approval for DC-5. The
+> **Data Center feature track:** DC-5 is complete and awaiting approval for DC-6. The
 > searchable, enterable Data Center room now appears beside Engineering with twelve
 > racks and a live storage overview. The local Vault backend now provides validated,
 > quota-limited file APIs plus dynamic department workspaces, actor-aware grants and
-> validated task/app artifact links. It is tracked separately from the 16-stage roadmap
-> and does not approve Stage 11.
-> The browser file explorer is planned for DC-5. See
+> validated task/app artifact links. Its `/vault` browser provides workspace and folder
+> navigation, bounded metadata search, safe previews, metadata/tags/favorites, upload,
+> rename, move, copy, Trash/restore/permanent delete, verified download and ZIP export.
+> It is tracked separately from the 16-stage roadmap and does not approve Stage 11. See
 > [`docs/DATA_CENTER.md`](docs/DATA_CENTER.md).
 
 ## Quick start
@@ -53,7 +54,7 @@ make dev     # backend on :8000 + frontend on :3000
 ```
 
 Open **http://localhost:3000** for the headquarters and **http://localhost:3000/system**
-for live system status, **/apps** for apps built by engineering, **/departments** and **/org** for the organisation,
+for live system status, **/vault** for the Digital Vault, **/apps** for apps built by engineering, **/departments** and **/org** for the organisation,
 **http://localhost:3000/characters** for the character studio
 (animation preview). API docs: **http://localhost:3000/api/docs**.
 
