@@ -23,7 +23,7 @@ import uuid
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -52,6 +52,9 @@ from app.schemas import TaskOut, dump
 from app.services.activity import ActivityTracker, Screen
 from app.services.org import CEO_DEPARTMENT
 from app.services.staffing import available_ceo, available_members, lead_of
+
+if TYPE_CHECKING:
+    from app.storage.artifacts import ArtifactRegistrar
 
 log = get_logger("nexus.workflows")
 
@@ -125,12 +128,14 @@ class Orchestrator:
         events: EventBus,
         activity: ActivityTracker,
         chat: Any,
+        artifacts: ArtifactRegistrar | None = None,
     ) -> None:
         self.database = database
         self.gateway = gateway
         self.events = events
         self.activity = activity
         self.chat = chat
+        self.artifacts = artifacts
         self.runs: dict[str, Run] = {}
 
     # =============================================================== owner API
@@ -554,6 +559,9 @@ class Orchestrator:
 
         if changed or changed_tasks:
             await session.commit()
+            for task in changed_tasks:
+                if task.status == TaskStatus.DONE.value and task.result:
+                    await self._register_task_artifact(task.id)
             for kind, text, task_id in notes:
                 await self._event(wid, kind, text, task_id=task_id)
             for t in changed_tasks:
@@ -879,6 +887,8 @@ class Orchestrator:
                 task.status = TaskStatus.AWAITING_REVIEW.value
             await session.commit()
             await self._publish_task(task)
+        if self_review:
+            await self._register_task_artifact(task_id)
         verb = "revised" if task.revisions else "delivered"
         await self._event(
             workflow_id,
@@ -1171,7 +1181,9 @@ class Orchestrator:
                 actor=ceo,
                 messages=[report_message],
             )
+        await self._register_workflow_artifact(workflow_id)
         if source_task is not None:
+            await self._register_task_artifact(source_task.id)
             await self._publish_task(source_task)
         await self.activity.flash(
             ceo.id, EmployeeStatus.COMPLETED.value, "Delivered the final report"
@@ -1356,6 +1368,24 @@ class Orchestrator:
                 task.review_notes = review_notes
             await session.commit()
             await self._publish_task(task)
+        if status == TaskStatus.DONE and (result or task.result):
+            await self._register_task_artifact(task_id)
+
+    async def _register_task_artifact(self, task_id: str) -> None:
+        if not self.artifacts:
+            return
+        try:
+            await self.artifacts.register_task(task_id)
+        except Exception:
+            log.exception("workflow.task_artifact_registration_failed", task_id=task_id)
+
+    async def _register_workflow_artifact(self, workflow_id: str) -> None:
+        if not self.artifacts:
+            return
+        try:
+            await self.artifacts.register_workflow(workflow_id)
+        except Exception:
+            log.exception("workflow.artifact_registration_failed", workflow_id=workflow_id)
 
     async def _revert(self, workflow_id: str, key: str) -> None:
         """A paused step goes back to waiting so Resume can redo it."""

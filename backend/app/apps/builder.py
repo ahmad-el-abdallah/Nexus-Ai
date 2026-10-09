@@ -27,7 +27,7 @@ import time
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -60,6 +60,9 @@ from app.orchestration.engine import PAUSE_KINDS, RETRY_KINDS, new_id, now, titl
 from app.orchestration.plans import PlanError
 from app.orchestration.prompts import clean_text
 from app.services.activity import ActivityTracker, Screen
+
+if TYPE_CHECKING:
+    from app.storage.artifacts import ArtifactRegistrar
 
 log = get_logger("nexus.apps")
 
@@ -152,6 +155,7 @@ class AppBuilder:
         activity: ActivityTracker,
         chat: Any,
         scratch: Path,
+        artifacts: ArtifactRegistrar | None = None,
     ) -> None:
         self.database = database
         self.gateway = gateway
@@ -159,8 +163,11 @@ class AppBuilder:
         self.activity = activity
         self.chat = chat
         self.scratch = scratch  # where files are written for the sandbox to check
+        self.artifacts = artifacts
         self.check = checks.check  # replaced in tests that don't have a sandbox
         self.running: dict[str, asyncio.Task[None]] = {}
+        self._restart_pending: set[str] = set()
+        self._closing = False
         self._deadline: dict[str, float] = {}
         self._calls = asyncio.Lock()
 
@@ -367,15 +374,27 @@ class AppBuilder:
             log.warning("apps.recovered", paused=len(paused))
 
     async def shutdown(self) -> None:
+        self._closing = True
         for app_id in list(self.running):
             await self._halt(app_id)
 
     # ================================================================== driver
 
     def start(self, app_id: str) -> None:
+        if self._closing:
+            return
         task = self.running.get(app_id)
-        if task is None or task.done():
-            self.running[app_id] = asyncio.create_task(self._drive(app_id), name=f"app-{app_id}")
+        if task is not None and not task.done():
+            if app_id not in self._restart_pending:
+                self._restart_pending.add(app_id)
+
+                def restart(_finished: asyncio.Task[None]) -> None:
+                    self._restart_pending.discard(app_id)
+                    self.start(app_id)
+
+                task.add_done_callback(restart)
+            return
+        self.running[app_id] = asyncio.create_task(self._drive(app_id), name=f"app-{app_id}")
 
     async def _halt(self, app_id: str) -> None:
         """Stops the driver and waits until it has let go, so nothing it was doing can
@@ -1001,6 +1020,11 @@ class AppBuilder:
                 actor=lead,
                 messages=messages,
             )
+        if self.artifacts:
+            try:
+                await self.artifacts.register_app_version(build.version_id)
+            except Exception:
+                log.exception("app.artifact_registration_failed", version_id=build.version_id)
         await self.activity.flash(lead.id, EmployeeStatus.COMPLETED.value, f"Delivered {app.name}")
         await self._publish(build.app_id)
 

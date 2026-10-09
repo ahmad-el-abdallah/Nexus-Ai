@@ -369,6 +369,12 @@ async def send_message(
     conversation.last_message_at = datetime.now(UTC)
     await session.commit()
     await session.refresh(message)
+    if chat.artifacts:
+        for attachment in stored:
+            try:
+                await chat.artifacts.register_attachment(attachment.id)
+            except Exception:
+                log.exception("chat.artifact_registration_failed", attachment_id=attachment.id)
     owner = await chat.message_out(session, message)
     chat.events.publish("message.created", dump(owner))
     try:

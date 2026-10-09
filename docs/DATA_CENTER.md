@@ -4,10 +4,10 @@ This document is the architecture and delivery tracker for the **Data Center & D
 Vault** feature. It is a separate, approval-gated feature track named **DC-1** through
 **DC-8** so that it cannot be confused with NEXUS AI's existing 16-stage roadmap.
 
-> **Current status:** DC-5 was completed on 2026-10-09 and is awaiting approval for
-> DC-6. The global product remains at **Stage 10 of 16**, with Stage 11 unapproved. The
-> 3D room, live metadata projection, owner file APIs and responsive Vault browser are
-> operational.
+> **Current status:** DC-6 was completed on 2026-10-09 and is awaiting approval for
+> DC-7. The global product remains at **Stage 10 of 16**, with Stage 11 unapproved. The
+> 3D room, live metadata projection, owner file APIs, responsive Vault browser and
+> automatic registration of real employee artifacts are operational.
 
 ## Product contract
 
@@ -40,8 +40,8 @@ reported, then stop for the owner's approval before the next one begins.
 | DC-2 | Visible 3D Data Center room, 2D fallback and backend-connected read-only overview | ✅ Complete |
 | DC-3 | Real storage backend: upload, download, folders, rename, move, trash and validation | ✅ Complete |
 | DC-4 | Dynamic department workspaces, quotas, permissions and task/app associations | ✅ Complete |
-| DC-5 | Professional file explorer, search, previews, metadata and ZIP export | ✅ Complete — awaiting approval for DC-6 |
-| DC-6 | Automatic registration of real AI employee artifacts | ⏳ Not started — approval required |
+| DC-5 | Professional file explorer, search, previews, metadata and ZIP export | ✅ Complete |
+| DC-6 | Automatic registration of real AI employee artifacts | ✅ Complete — awaiting approval for DC-7 |
 | DC-7 | Engineering project viewer, immutable versions, restore, diffs and dashboards | ⏳ Not started |
 | DC-8 | Backup/recovery, integrity, permission boundaries, performance and final polish | ⏳ Not started |
 
@@ -56,7 +56,7 @@ parallel demo system:
 
 | Existing source | Current persistence | DC integration decision |
 | --- | --- | --- |
-| Chat attachments | Bytes and decoded text in the `attachments` table; 2 MiB limit | Keep the current source intact. A later adapter may register an attachment in the Vault without changing chat history. |
+| Chat attachments | Bytes and decoded text in the `attachments` table; 2 MiB limit | The registrar copies the real bytes into the conversation department workspace without changing chat history and preserves a message link. |
 | Engineering apps | Versioned text in `app_files`; runtime materialized under `NEXUS_APPS_DIR` | `App` and `AppVersion` are the current engineering project aggregate. Vault links must retain app and version provenance. |
 | Code-run outputs | Files under `NEXUS_RUNS_DIR/<run id>/files` plus metadata on `code_runs` | Register only files that really exist and retain the originating run/task/employee. |
 | Tasks and workflows | Database-backed tasks, assignees, departments and results | Artifacts link to their real task and creator; failed generation creates no fake successful file. |
@@ -73,7 +73,9 @@ when the canonical project model exists.
 flowchart LR
   owner[Owner UI] -->|same-origin /api| web[Next.js]
   web --> api[FastAPI Vault API]
-  agent[Approved internal agent tool] --> service[Vault service]
+  source[Task / workflow / app / code-run source] --> registrar[Artifact registrar]
+  agent[Controlled employee artifact methods] --> registrar
+  registrar --> service[Vault service]
   api --> service
   service --> policy[Permission and quota policy]
   service --> db[(Existing SQLite / PostgreSQL)]
@@ -408,16 +410,84 @@ after the staged-tree reproduction.
 | Visual inspection | **PASS** — desktop and phone screenshots reviewed |
 | Full Playwright browser suite | **PARTIAL** — 55 passed; the same pre-existing suspended-walk test failed under software GL because the employee remained `walking` instead of reaching `away`. Every Vault, Data Center, mobile and no-WebGL test passed. |
 
+## DC-6 implementation
+
+- `ArtifactRegistrar` is the idempotent integration boundary between existing domain
+  records and the Vault. It never replaces the source record and never accepts an
+  operating-system path from an employee or browser.
+- Completed manual and workflow tasks are stored as Markdown in their real department
+  workspace. Final CEO workflow reports are stored in the company workspace. Creator,
+  department, task and workflow identity remain in metadata and validated links.
+- Every `written` `AppFile` in a ready version is copied into Engineering under
+  `AI Artifacts/Apps/<app>/Version <n>/...`, preserving its logical source tree and links
+  to the app, version and individual app-file row. Unsupported source suffixes are kept
+  as inert text rather than executed.
+- Code-run outputs are registered only when the metadata-listed file exists as a regular,
+  non-symbolic-link child of that run's private output folder. Run, task/message and
+  employee provenance is retained. A missing, unsafe or unregistrable claimed output
+  creates `artifact_registration_failed` at error level and no fake file.
+- Owner chat attachments retain the `attachments` table as their source of truth and are
+  registered as distinct source artifacts in the conversation department. Repeated file
+  names remain distinct through their stable attachment IDs and are not tagged as AI
+  generated.
+- Changed source bytes append an immutable Vault version. Repeating the same registration
+  does not duplicate bytes or links. Startup recovery scans completed persisted records,
+  so eligible pre-DC-6 artifacts are backfilled safely after deployment.
+- The controlled employee interface provides save, list, read, update, create-folder,
+  search and link methods. It derives the only writable workspace from the database
+  employee identity, applies normal Vault policy, and exposes opaque IDs rather than
+  storage keys or filesystem locations.
+- `/vault` now includes an **AI generated** view backed by the real `ai-generated` tag.
+  Generated-view creation/upload actions are disabled because manual uploads must not be
+  misrepresented as employee output. The inspector shows the real preview, immutable
+  versions, creator and expanded task/workflow/app/file/run/message provenance.
+- App builds may become visible as ready before their artifact copy returns. The app
+  driver now queues a requested next version behind that finishing driver, preventing a
+  real change request from becoming stranded in `planning`.
+
+### DC-6 source mapping
+
+| Source | Vault destination | Primary provenance |
+| --- | --- | --- |
+| Completed task result | Department / `AI Artifacts/Tasks` | `task:result` |
+| Completed workflow report | Company / `AI Artifacts/Workflows` | `workflow:report` |
+| Ready app version files | Engineering / `AI Artifacts/Apps/.../Version n` | `app_file:source`, plus app and version |
+| Real code-run output | Producing department / `AI Artifacts/Code Runs/<run>` | `code_run:output-*`, plus task/message |
+| Chat attachment | Conversation department / `AI Artifacts/Chat Attachments/<conversation>` | `message:attachment-*` |
+
+## DC-6 verification
+
+All backend, browser and full-stack execution used the isolated `/root/nexus-ai-dev`
+WSL copy, temporary databases/storage roots and fake providers. The owner's running
+installation and real provider credentials were not used.
+
+| Check | Result |
+| --- | --- |
+| DC-6 source, version, failure and controlled-tool tests | **PASS** — 4 focused tests |
+| Automatic completed-task integration | **PASS** — real fake-provider result, employee attribution, task link and byte-identical download |
+| Complete backend suite | **PASS** — 266 passed, 4 skipped |
+| Backend Ruff; frontend ESLint and TypeScript | **PASS** |
+| Frontend unit suite | **PASS** — 189 tests |
+| Next.js production build | **PASS** — 22 routes generated |
+| Isolated full-stack smoke test | **PASS** — direct/proxied APIs and complete existing Vault lifecycle |
+| Clean staged-tree setup, migrations and smoke test | **PASS** — fresh database/storage reproduced from exactly staged files |
+| Focused DC-6 browser workflow | **PASS** — completed employee task appeared in **AI generated** with preview and task provenance |
+| Visual inspection | **PASS** — `digital-vault-dc6-generated.png` reviewed at 1440×900 |
+| Full Playwright browser suite | **PARTIAL** — 56 passed; the same pre-existing suspended-walk test failed under software GL because the employee remained `walking` instead of reaching `away`. Every Vault, Data Center, mobile and no-WebGL test passed. |
+
 ## Current limitations
 
 - HTTP routes act as the local company owner because NEXUS has no human authentication
-  system. Internal employee operations are permission checked, but no agent tool exposes
-  them until automatic artifact registration in DC-6.
+  system. Internal employee artifact methods are permission checked, but they are not a
+  substitute for future human multi-user authentication.
 - The responsive browser file explorer is implemented; per-rack health and a writable
   room dashboard are not.
-- Existing chat, app and code-run files have not been migrated or registered.
-- Automatic AI artifact tools, historical version restore, browser sharing workflows and
-  backup are not implemented. Reconciliation is manual and non-destructive.
+- Eligible existing chat attachments, ready app files, completed task/workflow results
+  and real code-run outputs are registered by startup recovery. Failed/incomplete source
+  records remain source records and do not become successful Vault files.
+- Historical version restore/diff, project dashboards, browser sharing workflows and
+  backup are not implemented; those belong to DC-7/DC-8. Reconciliation remains manual
+  and non-destructive.
 - The only implemented blob backend is local disk. Backup health is unknown while
   `NEXUS_STORAGE_BACKUP_ROOT` is unset.
 - A canonical Project model and human authentication do not yet exist. The integrations

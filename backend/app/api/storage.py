@@ -110,7 +110,9 @@ class GrantOut(BaseModel):
 class LinkCreate(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    target_type: Literal["task", "app", "app_version"]
+    target_type: Literal[
+        "task", "workflow", "app", "app_version", "app_file", "code_run", "message"
+    ]
     target_id: str = Field(min_length=1, max_length=64)
     relation: str = Field(default="source", min_length=1, max_length=32)
     label: str | None = Field(default=None, max_length=160)
@@ -120,7 +122,9 @@ class LinkOut(BaseModel):
     id: str
     entry_id: str
     version_id: str | None
-    target_type: Literal["task", "app", "app_version"]
+    target_type: Literal[
+        "task", "workflow", "app", "app_version", "app_file", "code_run", "message"
+    ]
     target_id: str
     relation: str
     label: str | None

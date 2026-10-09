@@ -22,7 +22,7 @@ import uuid
 from collections.abc import AsyncIterator
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -45,6 +45,9 @@ from app.models import (
 )
 from app.schemas import AttachmentOut, MessageOut, dump
 from app.services.activity import ActivityTracker, Screen
+
+if TYPE_CHECKING:
+    from app.storage.artifacts import ArtifactRegistrar
 from app.services.org import SENIORITY_LEVELS
 
 log = get_logger("nexus.chat")
@@ -139,12 +142,14 @@ class ChatService:
         gateway: AIGateway,
         events: EventBus,
         activity: ActivityTracker,
+        artifacts: ArtifactRegistrar | None = None,
     ) -> None:
         self.database = database
         self.gateway = gateway
         self.events = events
         self.replies: dict[str, Reply] = {}  # by conversation id
         self.activity = activity
+        self.artifacts = artifacts
 
     # --------------------------------------------------------------- routing
 

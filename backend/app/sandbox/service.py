@@ -14,7 +14,7 @@ import shutil
 import uuid
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import update
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -23,6 +23,9 @@ from app.core.events import EventBus
 from app.core.logging import get_logger
 from app.db.session import Database
 from app.models import CodeRun, Message, MessageRole, RunStatus, Task
+
+if TYPE_CHECKING:
+    from app.storage.artifacts import ArtifactRegistrar
 from app.sandbox import runner
 
 log = get_logger("nexus.sandbox")
@@ -74,10 +77,17 @@ def limits() -> dict[str, Any]:
 
 
 class RunService:
-    def __init__(self, database: Database, events: EventBus, runs_dir: Path) -> None:
+    def __init__(
+        self,
+        database: Database,
+        events: EventBus,
+        runs_dir: Path,
+        artifacts: ArtifactRegistrar | None = None,
+    ) -> None:
         self.database = database
         self.events = events
         self.runs_dir = runs_dir
+        self.artifacts = artifacts
         self._lock = asyncio.Lock()
         self._tasks: set[asyncio.Task[None]] = set()
 
@@ -239,6 +249,11 @@ class RunService:
             for name, value in fields.items():
                 setattr(run, name, value)
             await session.commit()
+        if fields.get("files") and self.artifacts:
+            try:
+                await self.artifacts.register_code_run(run_id)
+            except Exception:
+                log.exception("sandbox.artifact_registration_failed", run_id=run_id)
         log.info("sandbox.finished", run_id=run_id, status=status.value)
         await self._publish(run_id)
 

@@ -102,3 +102,40 @@ test("the Digital Vault completes the core browser workflow", async ({ page, req
   expect(failedResponses).toEqual([]);
   expect(errors).toEqual([]);
 });
+
+test("completed employee work appears automatically in the AI-generated view", async ({ page, request }) => {
+  const errors = collectErrors(page);
+  expect((await request.post("/api/ai/models/refresh")).ok()).toBe(true);
+  expect((await request.patch("/api/ai/settings", {
+    data: { default_model: "fake/fast", paused: false, daily_request_budget: 500 },
+  })).ok()).toBe(true);
+  const created = await request.post("/api/tasks", {
+    data: {
+      title: "DC6 launch brief",
+      description: "Write the launch brief as a durable deliverable.",
+      department: "marketing",
+      run: true,
+    },
+  });
+  expect(created.ok()).toBe(true);
+  const task = await created.json();
+
+  await expect.poll(async () => {
+    const response = await request.get("/api/tasks");
+    const tasks = await response.json();
+    return tasks.find((item: { id: string }) => item.id === task.id)?.status;
+  }).toBe("done");
+
+  await page.goto("/vault");
+  const navigation = page.getByRole("complementary", { name: "Vault navigation" });
+  await navigation.getByRole("button", { name: /^Marketing/ }).click();
+  await navigation.getByRole("button", { name: /AI generated/ }).click();
+  const artifact = page.getByTestId("vault-item").filter({ hasText: "DC6 launch brief" });
+  await expect(artifact).toBeVisible();
+  await artifact.getByText(/DC6 launch brief/).click();
+  await expect(page.getByText("task · DC6 launch brief")).toBeVisible();
+  await expect(page.getByText(/three concrete steps/i)).toBeVisible();
+  await expect(page.getByRole("button", { name: "Upload file" })).toBeDisabled();
+  await page.screenshot({ path: "../.artifacts/e2e/digital-vault-dc6-generated.png", fullPage: true });
+  expect(errors).toEqual([]);
+});

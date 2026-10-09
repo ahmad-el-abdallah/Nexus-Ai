@@ -42,7 +42,8 @@ test.describe("3D headquarters", () => {
     await expect(panel.getByText("Metadata online")).toBeVisible();
     await expect(panel).toContainText("Read-only");
     await expect(panel).toContainText("Access grants0");
-    await expect(panel).toContainText("Linked items0");
+    const overview = await (await page.request.get("/api/storage/overview")).json();
+    await expect(panel).toContainText(`Linked items${overview.linked_entry_count}`);
     await expect(panel).toContainText("All workspaces currently accept authorized writes.");
     await expect(panel.getByText("Storage operations are available through the owner API.")).toBeVisible();
     await expect(panel.getByRole("link", { name: /Open Digital Vault explorer/ })).toHaveAttribute("href", "/vault");

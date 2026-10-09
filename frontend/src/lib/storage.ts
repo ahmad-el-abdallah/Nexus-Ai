@@ -69,7 +69,14 @@ export interface StorageLink {
   id: string;
   entry_id: string;
   version_id: string | null;
-  target_type: "task" | "app" | "app_version";
+  target_type:
+    | "task"
+    | "workflow"
+    | "app"
+    | "app_version"
+    | "app_file"
+    | "code_run"
+    | "message";
   target_id: string;
   relation: string;
   label: string | null;

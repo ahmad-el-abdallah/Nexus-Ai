@@ -1,36 +1,52 @@
-# NEXUS AI — Claude guide
+# NEXUS AI — agent guide
 
-A 3D virtual corporation run by AI agents: Next.js 16 frontend + FastAPI backend, NVIDIA
-inference, built in **16 stages**. Progress and reports: `docs/STAGES.md`.
+NEXUS AI is a local virtual corporation: a Next.js 16 / React 19 frontend, FastAPI
+backend, SQLite/PostgreSQL metadata, NVIDIA-compatible inference, a 3D office, and real
+approval-gated employee workflows.
+
+## Start here
+
+1. Read `docs/STAGES.md` for the 16-stage product roadmap.
+2. For Data Center or Digital Vault work, read `docs/DATA_CENTER.md` and
+   `docs/DC_HANDOFF.md` before editing anything.
+3. Read only the task-relevant guide under `docs/claude/`:
+   - `stage-workflow.md` — stage gates, commits and reports
+   - `principles.md` — truth, security and approval rules
+   - `conventions.md` — stack and code conventions
+   - `testing.md` — fakes and verification gates
+   - `gotchas.md` — known races, proxy, WSL and 3D pitfalls
+   - `environment.md` — machine and owner-specific constraints
 
 ## Non-negotiable rules
-- **One stage at a time.** Finish → test → inspect visuals → report → **STOP** and ask
-  for approval. Never start the next stage without the owner's explicit "yes"/"go".
-  Details and report format: `docs/claude/stage-workflow.md`.
-- **Nothing fake.** No invented stats, progress, work or data; show "Not enough data"
-  instead. Approvals and limits are enforced in backend code, not prompts. No secrets in
-  code, logs, API responses or the frontend; no hardcoded email address. Full list:
-  `docs/claude/principles.md`.
-- **Never push.** One local git commit per completed stage.
-- Don't kill servers you didn't start; the owner often runs `./start.sh` / `make dev`.
 
-## Commands
+- Work on one approved stage at a time. Implement, test, inspect visuals, document,
+  make one local commit, then stop for approval. Never infer approval for the next stage.
+- The Data Center uses its own DC-1–DC-8 approval track and does not advance the global
+  16-stage roadmap. Current handoff state is in `docs/DC_HANDOFF.md`.
+- Never fabricate files, activity, metrics, progress or success. Missing evidence must
+  remain unavailable/failed and be logged truthfully.
+- Enforce permissions, limits and approvals in backend code, not prompts or hidden UI.
+- Keep secrets out of source, logs, browser payloads and screenshots.
+- Never push. Create at most one local Git commit for a completed stage.
+- Preserve unrelated user changes and do not kill servers you did not start.
+- On Windows, run backend/Python work only in an isolated WSL copy such as
+  `/root/nexus-ai-dev`; never touch the owner's `/root/nexus-ai` runtime data.
+
+## Main commands
+
 ```bash
-./start.sh        # backend :8000 + frontend :3000 in one terminal (Ctrl-C stops both)
-make lint         # ruff + eslint + tsc
-make test         # pytest + vitest
-make test-e2e     # Playwright (own servers on 3200/18200/18300, fake AI, never NVIDIA)
-make smoke        # boots both servers and checks every page and API
-make migration name="…" && make migrate
+./start.sh        # local app: backend :8000, frontend :3000
+make lint         # Ruff, ESLint, TypeScript
+make test         # pytest and Vitest
+make build        # production frontend build
+make smoke        # isolated API/page/proxy smoke checks
+make test-e2e     # Playwright with fake AI; never the real provider
 ```
 
-## Where things are
-- `backend/app/` — `api/`, `services/`, `orchestration/` (workflows), `voice/`, `ai/` (gateway)
-- `frontend/src/` — `components/`, `lib/`, `world/` (3D office), `app/` (routes)
-- Architecture: `docs/ARCHITECTURE.md` · Dev setup: `docs/DEVELOPMENT.md` · Decisions: `docs/adr/`
+## Repository map
 
-## Read before working on…
-- Code style, stack versions, Next.js 16 / React rules → `docs/claude/conventions.md`
-- Tests, fakes, verification checklist → `docs/claude/testing.md`
-- Known pitfalls (hangs, races, proxies, 3D) → `docs/claude/gotchas.md`
-- Machine, owner preferences, real NVIDIA facts → `docs/claude/environment.md`
+- `backend/app/` — APIs, services, workflows, apps, sandbox, storage and AI gateway
+- `frontend/src/` — routes, UI, state and 3D world
+- `docs/ARCHITECTURE.md` — implemented architecture and security boundaries
+- `docs/DEVELOPMENT.md` — setup, configuration and troubleshooting
+- `docs/adr/` — durable architecture decisions

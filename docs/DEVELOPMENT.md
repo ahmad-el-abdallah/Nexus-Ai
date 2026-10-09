@@ -117,7 +117,7 @@ project directory, so stop `make dev` first.
 
 Shell environment variables override `.env` values.
 
-#### Data Center storage (DC-5 browser and file operations)
+#### Data Center storage (DC-6 automatic artifacts and browser operations)
 
 These server-side settings are implemented and validated. `GET /api/storage/overview`
 returns safe aggregate metadata for the 3D Data Center panel without exposing file
@@ -130,6 +130,16 @@ delete confirmed Trash items, and run non-destructive reconciliation. The respon
 browser explorer is available at `/vault` and from the Data Center room. Implementation
 and test evidence are tracked in
 [`DATA_CENTER.md`](DATA_CENTER.md).
+
+`ArtifactRegistrar` runs after successful employee work and during startup recovery.
+It registers completed task Markdown in the task department, final workflow reports in
+the company workspace, every written app source file in Engineering, real code-run
+output bytes in the producing employee's department, and chat attachments as source
+material. The adapter uses the same quotas and permission checks as the owner API,
+creates immutable versions when source bytes change, and records provenance links.
+Recorded run outputs that are missing, unsafe or unsupported create an error audit event
+and no file entry. The Vault's **AI generated** view is the `ai-generated` tag filter;
+it is never populated with samples.
 
 | Variable | Default | Purpose |
 | --- | --- | --- |
@@ -159,7 +169,7 @@ Permanent deletion requires both prior Trash state and `confirm=true`.
 
 Every department row receives a stable `ws_department:{key}` workspace at startup and
 whenever storage workspaces are read. The HTTP surface is the trusted local owner;
-background agent integrations must resolve an employee through
+background agent integrations resolve an employee through
 `VaultService.actor_for_employee()` and use the same service methods. Request data cannot
 select an arbitrary actor. Employees can read/write their own department workspace and
 read the company workspace; cross-department and manage access require an active,

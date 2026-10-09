@@ -43,6 +43,7 @@ from app.sandbox.service import RunService
 from app.services.activity import ActivityTracker
 from app.services.chat import ChatService
 from app.services.task_runner import TaskRunner
+from app.storage.artifacts import ArtifactRegistrar
 from app.storage.service import VaultService
 from app.voice.service import VoiceService
 
@@ -76,19 +77,36 @@ def create_app(
         app.state.db = Database(settings.database_url)
         app.state.vault = VaultService(settings)
         await app.state.vault.initialize()
+        app.state.artifacts = ArtifactRegistrar(app.state.db, app.state.vault, settings.runs_dir)
         app.state.ai = AIGateway(app.state.db, settings, transport=ai_transport)
         app.state.events = EventBus()
         app.state.activity = ActivityTracker(app.state.db, app.state.events)
         app.state.chat = ChatService(
-            app.state.db, app.state.ai, app.state.events, app.state.activity
+            app.state.db,
+            app.state.ai,
+            app.state.events,
+            app.state.activity,
+            app.state.artifacts,
         )
-        app.state.runs = RunService(app.state.db, app.state.events, settings.runs_dir)
+        app.state.runs = RunService(
+            app.state.db, app.state.events, settings.runs_dir, app.state.artifacts
+        )
         app.state.tasks = TaskRunner(
-            app.state.db, app.state.ai, app.state.events, app.state.activity, app.state.chat
+            app.state.db,
+            app.state.ai,
+            app.state.events,
+            app.state.activity,
+            app.state.chat,
+            app.state.artifacts,
         )
         app.state.voice = VoiceService(settings, app.state.events, transport=voice_transport)
         app.state.workflows = Orchestrator(
-            app.state.db, app.state.ai, app.state.events, app.state.activity, app.state.chat
+            app.state.db,
+            app.state.ai,
+            app.state.events,
+            app.state.activity,
+            app.state.chat,
+            app.state.artifacts,
         )
         app.state.email = EmailService(
             app.state.db,
@@ -105,6 +123,7 @@ def create_app(
             app.state.activity,
             app.state.chat,
             settings.apps_dir / "_checks",
+            app.state.artifacts,
         )
         app.state.app_runtime = AppRuntime(
             app.state.db, app.state.events, settings.apps_dir, settings.app_preview_port
@@ -134,6 +153,10 @@ def create_app(
             await app.state.app_runtime.recover()
             await app.state.activity.recover()
             await app.state.email.recover()
+            try:
+                await app.state.artifacts.recover()
+            except Exception:
+                log.exception("vault.artifact_recovery_failed")
         try:
             yield
         finally:

@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import asyncio
 from datetime import UTC, datetime
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import select
 
@@ -34,6 +34,9 @@ from app.orchestration.prompts import RULES, clean_text
 from app.schemas import TaskOut, dump
 from app.services.activity import ActivityTracker, Screen
 from app.services.chat import ChatService
+
+if TYPE_CHECKING:
+    from app.storage.artifacts import ArtifactRegistrar
 
 log = get_logger("nexus.tasks")
 
@@ -85,12 +88,14 @@ class TaskRunner:
         events: EventBus,
         activity: ActivityTracker,
         chat: ChatService,
+        artifacts: ArtifactRegistrar | None = None,
     ) -> None:
         self.database = database
         self.gateway = gateway
         self.events = events
         self.activity = activity
         self.chat = chat
+        self.artifacts = artifacts
         self.running: dict[str, asyncio.Task[None]] = {}
         self._closing = False
 
@@ -266,6 +271,11 @@ class TaskRunner:
                 task.prompt_tokens += completion.prompt_tokens or 0
                 task.completion_tokens += completion.completion_tokens or 0
             await session.commit()
+        if status == TaskStatus.DONE and result and self.artifacts:
+            try:
+                await self.artifacts.register_task(task_id)
+            except Exception:
+                log.exception("task.artifact_registration_failed", task_id=task_id)
         await self._publish(task_id)
         log.info("task.finished", task_id=task_id, status=status.value)
 

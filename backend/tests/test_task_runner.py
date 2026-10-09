@@ -29,6 +29,29 @@ async def wait_task(client: httpx.AsyncClient, task_id: str, *statuses: str) -> 
         await asyncio.sleep(0.02)
 
 
+async def wait_task_artifact(client: httpx.AsyncClient, task_id: str) -> dict[str, Any]:
+    deadline = time.monotonic() + 10
+    while True:
+        search = await client.get(
+            "/api/storage/search",
+            params={
+                "workspace_id": "ws_department:marketing",
+                "tag": "ai-generated",
+                "kind": "file",
+            },
+        )
+        for entry in search.json()["items"]:
+            detail = (await client.get(f"/api/storage/entries/{entry['id']}")).json()
+            if any(
+                link["target_type"] == "task" and link["target_id"] == task_id
+                for link in detail["links"]
+            ):
+                return detail
+        if time.monotonic() > deadline:
+            raise AssertionError("completed task was not registered in the Vault")
+        await asyncio.sleep(0.02)
+
+
 async def test_a_task_from_chat_is_done_and_reported_in_the_chat(
     wf_client: httpx.AsyncClient, agents: AgentProvider
 ) -> None:
@@ -62,6 +85,11 @@ async def test_a_task_from_chat_is_done_and_reported_in_the_chat(
     report = messages[-1]
     assert report["role"] == "agent" and report["author_name"] == "Elena Rossi"
     assert report["content"].startswith("✅ **Task done: Write the launch plan**")
+    artifact = await wait_task_artifact(wf_client, task["id"])
+    assert artifact["artifact_type"] == "task-result"
+    assert artifact["created_by_name"] == "Elena Rossi"
+    stored = await wf_client.get(f"/api/storage/entries/{artifact['id']}/download")
+    assert stored.text == done["result"]
 
 
 async def test_a_failed_task_says_why_and_can_run_again(

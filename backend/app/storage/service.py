@@ -21,9 +21,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import Settings
 from app.models import (
     App,
+    AppFile,
     AppVersion,
+    CodeRun,
+    Conversation,
     Department,
     Employee,
+    Message,
     StorageEntry,
     StorageEntryKind,
     StorageEntryStatus,
@@ -38,6 +42,7 @@ from app.models import (
     StorageWorkspaceScope,
     StorageWorkspaceState,
     Task,
+    Workflow,
 )
 from app.storage.errors import BlobLimitError, BlobMissingError, BlobUnsafeError, VaultError
 from app.storage.local import LocalBlobStore
@@ -471,6 +476,31 @@ class VaultService:
             "offset": offset,
             "limit": limit,
         }
+
+    async def record_artifact_failure(
+        self,
+        session: AsyncSession,
+        workspace_id: str,
+        *,
+        source_type: str,
+        source_id: str,
+        message: str,
+        actor: StorageActor = SYSTEM_ACTOR,
+    ) -> None:
+        """Record a truthful registration failure without inventing a file entry."""
+        workspace = await self._workspace(session, workspace_id, write=True)
+        await self._require(session, actor, workspace, "write")
+        session.add(
+            self._workspace_event(
+                workspace_id,
+                "artifact_registration_failed",
+                message,
+                actor,
+                {"source_type": source_type, "source_id": source_id},
+                level="error",
+            )
+        )
+        await session.commit()
 
     async def entry_detail(
         self,
@@ -1025,6 +1055,86 @@ class VaultService:
             stream=self.blobs.chunks(version.storage_key),
         )
 
+    async def append_version(
+        self,
+        session: AsyncSession,
+        entry_id: str,
+        content_type: str | None,
+        reader: Reader,
+        change_description: str | None,
+        *,
+        actor: StorageActor = OWNER_ACTOR,
+    ) -> dict[str, Any]:
+        """Append immutable bytes to an existing file; identical content is idempotent."""
+        entry = await self._entry(session, entry_id)
+        workspace = await self._workspace(session, entry.workspace_id, write=True)
+        await self._require(session, actor, workspace, "write", entry)
+        if entry.kind != StorageEntryKind.FILE.value or entry.trashed_at is not None:
+            raise VaultError(409, "Restore this file before adding a version.")
+        extension = Path(entry.name).suffix.casefold()
+        if extension not in self.settings.storage_allowed_extensions:
+            raise VaultError(
+                415, f"Files with the {extension or '(none)'} extension are not allowed."
+            )
+        try:
+            blob = await self.blobs.put(reader, self.settings.storage_max_file_bytes)
+        except BlobLimitError as error:
+            raise VaultError(413, "The file exceeds the configured size limit.") from error
+        except BlobUnsafeError as error:
+            raise VaultError(503, str(error)) from error
+        current = await self._current_version(session, entry)
+        if current and current.sha256 == blob.sha256 and current.size_bytes == blob.size:
+            await self.blobs.remove(blob.key)
+            return await self.entry_view(session, entry)
+        remaining = self._quota(workspace) - await self._usage(session, workspace.id)
+        if blob.size > remaining:
+            await self.blobs.remove(blob.key)
+            raise VaultError(413, "The new version would exceed the workspace quota.")
+        version = StorageVersion(
+            id=self._id("stv"),
+            entry_id=entry.id,
+            number=entry.current_version_number + 1,
+            backend=self.settings.storage_backend.value,
+            storage_key=blob.key,
+            original_name=entry.name,
+            mime_type=self._mime(entry.name, content_type),
+            size_bytes=blob.size,
+            sha256=blob.sha256,
+            status=StorageVersionStatus.AVAILABLE.value,
+            change_description=(
+                change_description.strip()
+                if change_description and change_description.strip()
+                else None
+            ),
+            created_by_kind=actor.kind,
+            created_by_employee_id=actor.employee_id,
+            created_by_name=actor.name,
+        )
+        entry.current_version_number = version.number
+        entry.status = StorageEntryStatus.AVAILABLE.value
+        entry.last_error = None
+        try:
+            session.add(version)
+            await session.flush()
+            session.add(
+                self._event(
+                    entry.workspace_id,
+                    entry,
+                    "version_created",
+                    f"Added version {version.number} of {entry.name}.",
+                    actor=actor,
+                    version=version,
+                    details={"size_bytes": blob.size},
+                )
+            )
+            await self._commit_conflict(session, "This file changed concurrently.")
+        except BaseException:
+            await session.rollback()
+            await self.blobs.remove(blob.key)
+            raise
+        await session.refresh(entry)
+        return await self.entry_view(session, entry)
+
     async def update_entry(
         self,
         session: AsyncSession,
@@ -1361,14 +1471,52 @@ class VaultService:
             ):
                 raise VaultError(409, "A task must match the artifact workspace department.")
             return
+        if target_type == "workflow":
+            if await session.get(Workflow, target_id) is None:
+                raise VaultError(422, "The linked workflow does not exist.")
+            if workspace.scope != StorageWorkspaceScope.COMPANY.value:
+                raise VaultError(409, "Workflow reports belong in the company workspace.")
+            return
+        if target_type == "message":
+            try:
+                message_id = int(target_id)
+            except ValueError as error:
+                raise VaultError(422, "The linked message id is invalid.") from error
+            message = await session.get(Message, message_id)
+            if message is None:
+                raise VaultError(422, "The linked message does not exist.")
+            conversation = await session.get(Conversation, message.conversation_id)
+            if workspace.scope == StorageWorkspaceScope.DEPARTMENT.value and (
+                conversation is None or conversation.department != workspace.department_key
+            ):
+                raise VaultError(409, "A message must match the artifact workspace department.")
+            return
+        if target_type == "code_run":
+            run = await session.get(CodeRun, target_id)
+            if run is None:
+                raise VaultError(422, "The linked code run does not exist.")
+            if workspace.scope == StorageWorkspaceScope.DEPARTMENT.value:
+                employee = await session.get(Employee, run.employee_id) if run.employee_id else None
+                if employee is None or employee.department != workspace.department_key:
+                    raise VaultError(
+                        409, "A code run must match the artifact workspace department."
+                    )
+            return
         if target_type == "app":
             if await session.get(App, target_id) is None:
                 raise VaultError(422, "The linked app does not exist.")
         elif target_type == "app_version":
             if await session.get(AppVersion, target_id) is None:
                 raise VaultError(422, "The linked app version does not exist.")
+        elif target_type == "app_file":
+            try:
+                app_file_id = int(target_id)
+            except ValueError as error:
+                raise VaultError(422, "The linked app file id is invalid.") from error
+            if await session.get(AppFile, app_file_id) is None:
+                raise VaultError(422, "The linked app file does not exist.")
         else:
-            raise VaultError(422, "Only task, app, and app_version links are supported.")
+            raise VaultError(422, "This artifact link target is not supported.")
         if (
             workspace.scope == StorageWorkspaceScope.DEPARTMENT.value
             and workspace.department_key != "engineering"
@@ -1660,10 +1808,11 @@ class VaultService:
         text: str,
         actor: StorageActor,
         details: dict[str, object] | None = None,
+        level: str = "info",
     ) -> StorageEvent:
         return StorageEvent(
             workspace_id=workspace_id,
-            level="info",
+            level=level,
             kind=kind,
             actor_kind=actor.kind,
             actor_employee_id=actor.employee_id,

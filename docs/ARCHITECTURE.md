@@ -723,7 +723,11 @@ workspace provisioning, quota/state administration, trusted employee actors, sco
 grants and validated links to real tasks and apps. DC-5 adds the `/vault` browser and
 bounded metadata search, safe previews, metadata/tags/favorites, immutable-blob copies,
 confirmed Trash deletion and streamed ZIP export. It does not advance the global
-16-stage roadmap.
+16-stage roadmap. DC-6 adds an idempotent `ArtifactRegistrar` that copies only real
+persisted task results, workflow reports, app files, code-run outputs and chat
+attachments into the Vault, appends immutable versions when source bytes change, and
+retains links to the originating records. Startup recovery backfills eligible existing
+sources without inventing files.
 
 Searchable metadata lives in the existing database and immutable bytes live under
 opaque keys in the configurable local storage root. `VaultService` coordinates both;
@@ -737,8 +741,11 @@ idempotently at startup and storage reads. Owner APIs and agent operations share
 service boundary. Agent callers receive an internally resolved `StorageActor`; they
 cannot choose another employee identity in an HTTP request. Same-department access,
 company read access, scoped grants, expiry, revocation, read-only state and quotas are
-enforced before metadata or blob operations. Task and app links resolve real domain rows
-and remain idempotent.
+enforced before metadata or blob operations. Task, workflow, message, app/version/file
+and code-run links resolve real domain rows and remain idempotent. The controlled
+employee artifact interface derives its workspace from the resolved employee and never
+accepts an operating-system path. A missing or unsafe claimed code-run output produces
+an error audit event, not a successful file entry.
 No endpoint accepts a filesystem path or returns a storage key. Logical paths are NFKC
 normalised and case-folded for uniqueness, object keys are generated internally, reads
 refuse symbolic links and downloads receive `nosniff`. Rack meshes remain fixed physical

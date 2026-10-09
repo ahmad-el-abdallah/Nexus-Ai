@@ -100,6 +100,11 @@ describe("VaultPage", () => {
     fireEvent.change(screen.getByPlaceholderText(/Search names/), { target: { value: "release" } });
     await waitFor(() => expect(vi.mocked(fetch).mock.calls.some(([url]) => String(url).includes("q=release"))).toBe(true));
 
+    fireEvent.click(screen.getByRole("button", { name: /AI generated/ }));
+    await waitFor(() => expect(vi.mocked(fetch).mock.calls.some(([url]) => String(url).includes("tag=ai-generated"))).toBe(true));
+    expect(screen.getByRole("button", { name: "Upload file" })).toBeDisabled();
+    fireEvent.click(screen.getByRole("button", { name: /All files/ }));
+
     fireEvent.click(screen.getByRole("button", { name: "+ New folder" }));
     const folderName = screen.getByLabelText("New folder name");
     fireEvent.change(folderName, { target: { value: "Planning" } });
