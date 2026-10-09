@@ -22,8 +22,10 @@ export interface Employee {
   supervisor_id: string | null;
   model_id?: string | null;
   avatar_seed: number;
-  /** Drives the voice, the character's look and grammatical gender in Arabic. */
+  /** Drives the voice and the character's look. */
   gender?: Gender | null;
+  /** Owner-managed skill tags. */
+  skills?: string[];
   status: EmployeeStatus;
   status_detail: string | null;
   status_changed_at: string;

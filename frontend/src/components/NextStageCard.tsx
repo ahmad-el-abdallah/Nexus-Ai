@@ -1,6 +1,13 @@
 import { CURRENT_STAGE, STAGES } from "@/lib/stages";
 
 const NEXT_STAGE_SCOPE: Record<number, string[]> = {
+  11: [
+    "An executive dashboard of real company activity",
+    "Projects with milestones that group tasks and workflows",
+    "Live status, costs and progress from recorded data only",
+    "Owner approvals and checkpoints for project work",
+    "No invented metrics — gaps show as insufficient data",
+  ],
   10: [
     "Employee profiles that open from the 3D characters",
     "Skills, task history and active assignments from real records",

@@ -143,6 +143,11 @@ async def create_employee(
         status="idle",
     )
     session.add(employee)
+    await session.flush()
+    from app.models import EmployeeEventKind as K
+    from app.services.profiles import log_event
+
+    log_event(session, employee.id, K.HIRED, f"Hired as {role} in {department.name}")
     await session.commit()
     await session.refresh(employee)
     log.info("employee.created", employee_id=employee.id, department=department.key, role=role)
@@ -180,8 +185,46 @@ async def update_employee(
         old_department.director_id = None
         await _reattach_reports(session, employee.id, await ceo_id(session))
 
-    if changes.name is not None:
-        employee.name = _clean_name(changes.name)
+    from app.models import EmployeeEventKind as K
+    from app.services.profiles import log_event
+
+    if changes.name is not None and _clean_name(changes.name) != employee.name:
+        new_name = _clean_name(changes.name)
+        log_event(
+            session, employee.id, K.RENAMED, f"Renamed to {new_name}", employee.name, new_name
+        )
+        employee.name = new_name
+    if role != employee.role:
+        log_event(
+            session, employee.id, K.ROLE_CHANGED, f"Role changed to {role}", employee.role, role
+        )
+    if department.key != old_department.key:
+        log_event(
+            session,
+            employee.id,
+            K.DEPARTMENT_CHANGED,
+            f"Moved to {department.name}",
+            old_department.name,
+            department.name,
+        )
+    if changes.seniority is not None and changes.seniority != employee.seniority:
+        log_event(
+            session,
+            employee.id,
+            K.SENIORITY_CHANGED,
+            f"Seniority changed to {changes.seniority}",
+            employee.seniority,
+            changes.seniority,
+        )
+    if changes.desk_set and changes.desk_id != employee.desk_id:
+        log_event(
+            session,
+            employee.id,
+            K.DESK_CHANGED,
+            f"Desk changed to {changes.desk_id or 'none (remote)'}",
+            employee.desk_id,
+            changes.desk_id,
+        )
     employee.role = role
     employee.department = department.key
     if changes.seniority is not None:

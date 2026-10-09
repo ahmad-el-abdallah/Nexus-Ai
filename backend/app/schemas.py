@@ -23,6 +23,7 @@ class EmployeeOut(BaseModel):
     model_id: str | None
     avatar_seed: int
     gender: str | None = None
+    skills: list[str] = []
     status: EmployeeStatus
     status_detail: str | None
     status_changed_at: datetime

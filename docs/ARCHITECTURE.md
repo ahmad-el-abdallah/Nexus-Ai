@@ -100,7 +100,7 @@ flowchart LR
 | `app/orchestration/` (`engine.py`, `plans.py`, `prompts.py`), `app/api/workflows.py`, `app/services/activity.py`, `app/services/staffing.py` | 8 | Workflow engine: CEO delegation, supervisors, workers, reviews, dependencies, retries, pause/cancel, hard limits; live employee statuses |
 | `app/services/tools/` | 8, 15 | *Planned.* Tool gateway: allowlists, sandboxing, permission checks |
 | `app/email/` (`providers.py`, `transport.py`, `brevo.py`, `mime.py`, `oauth.py`, `service.py`), `app/api/email.py` | 9 | Company email: provider presets, Brevo API sending, SMTP/IMAP (stdlib, in threads), OAuth (PKCE), encrypted credentials, drafts, approval queue, duplicate-safe sending, inbox sync, email log |
-| `app/services/metrics/` | 10 | *Planned.* Evidence-based ratings with configurable weights |
+| `app/services/profiles.py`, `app/api/employees.py` (profile/feedback), `app/models/profile.py` | 10 | Employee profiles: skills, evidence-based performance computed from tasks/runs/reviews, owner ratings & feedback, change history (`employee_events`, `employee_feedback`) |
 | `app/services/projects/` | 11 | *Planned.* Projects, milestones, boards, approvals |
 | `app/services/meetings/` | 12 | *Planned.* Turn-based meeting orchestrator with hard turn limits |
 | `app/services/knowledge/` | 13 | *Planned.* Documents, versions, permission-aware retrieval |
@@ -480,6 +480,27 @@ own PID namespace, at most 64 processes, 512 MB memory without swap, one CPU cor
 files the program writes (≤ 20 files, 5 MB) are kept in `backend/var/runs/<id>/files`
 (`NEXUS_RUNS_DIR`) and downloaded as attachments (`nosniff`). Engineering, IT, Data, QA
 and Security employees are told these rules so their code runs there.
+
+### Employee profiles & ratings (Stage 10)
+
+`GET /api/employees/{id}/profile` (`app/services/profiles.py`) assembles a profile from
+the real record: identity, manager and reports; owner-managed `skills`; active
+assignments and finished task history (the employee's own `manual`/`work` tasks);
+recent sandbox runs; the owner's ratings/feedback; and a change history. It opens from
+the 3D character panel ("View profile") and from department team tables, at
+`/employees/{id}`.
+
+- **Performance is computed, never stored.** A single success rate = (tasks done + runs
+  succeeded) / (all finished tasks + runs), with the raw counts and total revisions
+  requested shown beside it. No finished work → `null` → the UI shows "Not enough data".
+  This can't drift from the record or be invented.
+- **The owner's rating is separate** from measured success: the average of the stars the
+  owner gave (`employee_feedback`), shown with its count, never blended into the computed
+  rate.
+- **Stored tables hold only owner input and an audit trail:** `skills` (a JSON column),
+  `employee_feedback` (rating 1-5 and/or note), and `employee_events` (hiring,
+  role/department/seniority/desk/model changes, suspensions, ratings) — logged from the
+  org service and the feedback endpoint (migration 0012).
 
 ### Company knowledge for every employee
 

@@ -13,8 +13,8 @@ reported, and the next stage starts only after the owner's explicit approval.
 | 6 | Text communication | ✅ Approved |
 | 7 | Voice communication | ✅ Approved |
 | 8 | Multi-agent task orchestration | ✅ Approved |
-| 9 | Email integration | ✅ Complete, awaiting approval for Stage 10 |
-| 10 | Employee profiles & ratings | ⏳ Not started |
+| 9 | Email integration | ✅ Approved |
+| 10 | Employee profiles & ratings | ✅ Complete, awaiting approval for Stage 11 |
 | 11 | Executive dashboard & project management | ⏳ Not started |
 | 12 | Meetings & interdepartment collaboration | ⏳ Not started |
 | 13 | Memory, documents & organisational knowledge | ⏳ Not started |
@@ -333,4 +333,30 @@ owner's own engineer and must build complete, real, runnable tools for the owner
 systems — including networking, security and system-administration tools such as a
 network or port scanner — instead of refusing or giving only an outline, declining only
 requests framed as intruding on systems the owner has no right to.
+
+
+## Stage 10 — Employee profiles & ratings
+
+**Completed:** 2026-10-09 · **Commit:** "Stage 10: employee profiles & ratings"
+
+A profile opens from any 3D character (View profile) or from an employee name in a
+department table, at `/employees/{id}`. It shows identity, office, manager and team;
+owner-managed **skills**; **active assignments** and **task history**; an **evidence-based
+performance** panel; the owner's **ratings and feedback** with history; and a **change
+history** (hiring, role/department/seniority/desk/model changes, suspensions, ratings).
+
+Performance is computed live (`app/services/profiles.py`) from recorded tasks, sandbox
+runs and supervisor revisions — never stored, never invented. With no finished work it
+shows "Not enough data". Skills, ratings and notes are the only things the owner stores;
+every structural change is logged to `employee_events` (migration 0012).
+
+### Acceptance criteria
+
+| Criterion | Result | Evidence |
+| --- | --- | --- |
+| Profiles open from the 3D characters | PASS | EmployeePanel "View profile" → `/employees/{id}`; also from department team tables; e2e |
+| Task stats are accurate | PASS | Counts come straight from the `tasks`/`code_runs` rows for that assignee; unit test with seeded done/failed/running tasks and runs → 60 % from 3 of 5 |
+| Ratings come from evidence | PASS | Performance is computed from real tasks/runs; the owner's star rating is a separate average of stored feedback, never blended into a fake number |
+| Unknown metrics show insufficient data | PASS | No finished work → "Not enough data"; no skills/ratings/history → explicit empty states (screenshot) |
+| Modifications persist | PASS | Skills and feedback saved via the API, survive reload; e2e checks the API reflects them |
 

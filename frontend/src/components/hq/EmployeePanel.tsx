@@ -119,8 +119,14 @@ export function EmployeePanel() {
 
       <div className="mt-5 flex flex-wrap items-center gap-2">
         <Link
-          href={chatHref({ kind: "employee", employee_id: employee.id })}
+          href={`/employees/${employee.id}`}
           className="rounded-lg bg-nx-violet/30 px-3 py-2 text-xs font-semibold text-white ring-1 ring-nx-violet/60 transition hover:bg-nx-violet/40"
+        >
+          View profile
+        </Link>
+        <Link
+          href={chatHref({ kind: "employee", employee_id: employee.id })}
+          className="rounded-lg px-3 py-2 text-xs font-medium text-nx-text ring-1 ring-nx-line-strong transition hover:bg-white/5"
         >
           Message
         </Link>

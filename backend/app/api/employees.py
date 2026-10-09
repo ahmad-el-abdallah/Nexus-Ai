@@ -13,7 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.ai import require_model
 from app.core.logging import get_logger
 from app.db.session import get_session
-from app.models import Employee, EmployeeStatus
+from app.models import Employee, EmployeeEventKind, EmployeeFeedback, EmployeeStatus
 from app.schemas import EmployeeOut, dump
 from app.services.org import (
     EmployeeChanges,
@@ -22,11 +22,21 @@ from app.services.org import (
     delete_employee,
     update_employee,
 )
+from app.services.profiles import build_profile, log_event
 
 router = APIRouter(prefix="/api/employees", tags=["employees"])
 log = get_logger("nexus.employees")
 
 Session = Annotated[AsyncSession, Depends(get_session)]
+
+
+def _clean_skills(skills: list[str]) -> list[str]:
+    out: list[str] = []
+    for raw in skills:
+        skill = " ".join(raw.split())[:40]
+        if skill and skill.lower() not in (s.lower() for s in out):
+            out.append(skill)
+    return out[:40]
 
 
 class EmployeeCreate(BaseModel):
@@ -52,6 +62,7 @@ class EmployeePatch(BaseModel):
     desk_id: str | None = None
     supervisor_id: str | None = None
     model_id: str | None = None
+    skills: list[str] | None = Field(default=None, max_length=40)
 
 
 def _roster_changed(request: Request) -> None:
@@ -131,9 +142,19 @@ async def edit_employee(
     """Owner action: rename, change role, move department, re-seat or re-report."""
     employee = await _get(session, employee_id)
     fields = body.model_fields_set
-    if "model_id" in fields:
+    if "model_id" in fields and body.model_id != employee.model_id:
         await require_model(session, body.model_id)
+        log_event(
+            session,
+            employee.id,
+            EmployeeEventKind.MODEL_CHANGED,
+            f"AI model set to {body.model_id or 'the company/department default'}",
+            employee.model_id,
+            body.model_id,
+        )
         employee.model_id = body.model_id
+    if body.skills is not None:
+        employee.skills = _clean_skills(body.skills)
     changes = EmployeeChanges(
         name=body.name,
         role=body.role,
@@ -179,6 +200,7 @@ async def suspend_employee(employee_id: str, session: Session, request: Request)
     employee = await _get(session, employee_id)
     if employee.status == EmployeeStatus.SUSPENDED:
         raise HTTPException(status.HTTP_409_CONFLICT, "Employee is already suspended")
+    log_event(session, employee.id, EmployeeEventKind.SUSPENDED, "Suspended by the owner")
     employee = await _set_status(
         request, session, employee, EmployeeStatus.SUSPENDED, "Suspended by the owner"
     )
@@ -192,4 +214,53 @@ async def activate_employee(employee_id: str, session: Session, request: Request
     employee = await _get(session, employee_id)
     if employee.status != EmployeeStatus.SUSPENDED:
         raise HTTPException(status.HTTP_409_CONFLICT, "Only suspended employees can be activated")
+    log_event(session, employee.id, EmployeeEventKind.ACTIVATED, "Returned to service by the owner")
     return await _set_status(request, session, employee, EmployeeStatus.IDLE, None)
+
+
+class FeedbackIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    rating: int | None = Field(default=None, ge=1, le=5)
+    note: str | None = Field(default=None, max_length=4000)
+
+
+@router.get("/{employee_id}/profile")
+async def employee_profile(employee_id: str, session: Session) -> dict[str, Any]:
+    """The full profile: identity, skills, assignments, task history, evidence-based
+    performance, the owner's ratings and feedback, and the change history."""
+    return await build_profile(session, await _get(session, employee_id))
+
+
+@router.post("/{employee_id}/feedback", status_code=status.HTTP_201_CREATED)
+async def add_feedback(
+    employee_id: str, body: FeedbackIn, session: Session, request: Request
+) -> dict[str, Any]:
+    """The owner leaves a rating (1-5) and/or a note; it is kept in the rating history."""
+    employee = await _get(session, employee_id)
+    note = (body.note or "").strip() or None
+    if body.rating is None and note is None:
+        raise HTTPException(422, "Add a rating or a note.")
+    session.add(EmployeeFeedback(employee_id=employee.id, rating=body.rating, note=note))
+    parts = []
+    if body.rating is not None:
+        parts.append(f"{body.rating}/5")
+    if note:
+        parts.append(f"“{note[:80]}”")
+    kind = EmployeeEventKind.RATED if body.rating is not None else EmployeeEventKind.FEEDBACK
+    log_event(session, employee.id, kind, "Owner feedback: " + " · ".join(parts))
+    await session.commit()
+    request.app.state.events.publish("employee.profile", {"id": employee.id})
+    return await build_profile(session, employee)
+
+
+@router.delete("/{employee_id}/feedback/{feedback_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_feedback(
+    employee_id: str, feedback_id: int, session: Session, request: Request
+) -> None:
+    feedback = await session.get(EmployeeFeedback, feedback_id)
+    if feedback is None or feedback.employee_id != employee_id:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Feedback not found")
+    await session.delete(feedback)
+    await session.commit()
+    request.app.state.events.publish("employee.profile", {"id": employee_id})
