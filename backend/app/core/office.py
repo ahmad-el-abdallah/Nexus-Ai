@@ -9,7 +9,7 @@ from typing import TypedDict
 from app.core.config import BACKEND_DIR
 
 OFFICE_FILE = BACKEND_DIR.parent / "shared" / "office-desks.json"
-AMENITY_ROOMS = {"lounge", "cafe"}
+NON_DEPARTMENT_ROOMS = {"lounge", "cafe", "data-center"}
 
 
 class Desk(TypedDict):
@@ -35,5 +35,5 @@ def desk_ids() -> set[str]:
 
 
 def office_room_ids() -> set[str]:
-    """Rooms a department can use as its office (not the lounge or café)."""
-    return set(office()[1]) - AMENITY_ROOMS
+    """Rooms a department can use as its office (not amenities/infrastructure)."""
+    return set(office()[1]) - NON_DEPARTMENT_ROOMS

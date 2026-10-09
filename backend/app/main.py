@@ -24,6 +24,7 @@ from app.api import (
     events,
     health,
     runs,
+    storage,
     tasks,
     voice,
     workflows,
@@ -172,4 +173,5 @@ def create_app(
     app.include_router(email.router)
     app.include_router(runs.router)
     app.include_router(apps.router)
+    app.include_router(storage.router)
     return app

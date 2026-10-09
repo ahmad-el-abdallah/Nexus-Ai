@@ -25,8 +25,8 @@ reported, and the next stage starts only after the owner's explicit approval.
 ### Separate Data Center feature track
 
 The Data Center & Digital Vault is tracked as **DC-1 through DC-8** in
-[`DATA_CENTER.md`](DATA_CENTER.md). DC-1's architecture, configuration and metadata
-foundation are complete and awaiting approval for DC-2. This feature track does not
+[`DATA_CENTER.md`](DATA_CENTER.md). DC-2's visible 3D room and live read-only metadata
+overview are complete and awaiting approval for DC-3. This feature track does not
 change the global status above: Stage 10 remains complete and Stage 11 has not been
 approved.
 

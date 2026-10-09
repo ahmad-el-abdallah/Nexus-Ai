@@ -76,6 +76,7 @@ echo "Backend (direct):"
 check "GET /api/health/live"  200 "$API/api/health/live"  '"status":"ok"'
 check "GET /api/health/ready" 200 "$API/api/health/ready" '"status":"ok"'
 check "GET /api/system/info"  200 "$API/api/system/info"  '"installation_id":"[0-9a-f]{32}"'
+check "GET /api/storage/overview" 200 "$API/api/storage/overview" '"status":"metadata_ready"'
 
 echo "Frontend:"
 check "GET /healthz"          200 "$WEB/healthz"          '"status":"ok"'
@@ -95,6 +96,7 @@ echo "Frontend → backend proxy:"
 check "GET /api/health/ready" 200 "$WEB/api/health/ready" 'x-request-id'
 check "GET /api/system/info"  200 "$WEB/api/system/info"  '"name":"NEXUS AI"'
 check "GET /api/departments"  200 "$WEB/api/departments"  '"key":"knowledge"'
+check "GET /api/storage/overview" 200 "$WEB/api/storage/overview" '"writes_enabled":false'
 check "GET /api/ai/settings"  200 "$WEB/api/ai/settings"  '"provider":"nvidia"'
 check "GET /api/conversations" 200 "$WEB/api/conversations" '^\['
 check "GET /api/tasks"        200 "$WEB/api/tasks"        '^\['

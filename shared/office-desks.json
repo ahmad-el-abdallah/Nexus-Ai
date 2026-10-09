@@ -40,6 +40,11 @@
       "id": "engineering",
       "name": "Engineering",
       "floor": "L2"
+    },
+    {
+      "id": "data-center",
+      "name": "Data Center",
+      "floor": "L2"
     }
   ],
   "desks": [

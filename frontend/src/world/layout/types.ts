@@ -29,7 +29,7 @@ export interface FloorDef {
 /** Stable department keys; Stage 4 creates matching backend departments. */
 export type DepartmentKey = "executive" | "sales" | "marketing" | "engineering";
 
-export type RoomKind = "department" | "meeting" | "reception" | "amenity";
+export type RoomKind = "department" | "meeting" | "reception" | "amenity" | "infrastructure";
 
 export type FloorFinish = "carpet" | "carpet-indigo" | "stone" | "wood" | "tile";
 

@@ -716,9 +716,10 @@ CEO (capped at 14 kB).
 ### Data Center and Digital Vault (separate DC feature track)
 
 The Data Center is tracked independently as **DC-1 through DC-8** in
-[`DATA_CENTER.md`](DATA_CENTER.md). DC-1's architecture, configuration and metadata
-foundation are complete; it does not advance the global 16-stage roadmap, and no Vault
-file API, explorer or 3D server room is claimed yet.
+[`DATA_CENTER.md`](DATA_CENTER.md). DC-2 adds a searchable, enterable room beside
+Engineering to the shared 3D/2D layout and a read-only `/api/storage/overview` projection.
+It does not advance the global 16-stage roadmap, and no Vault file API or explorer is
+claimed yet.
 
 The design keeps searchable metadata in the existing database and immutable bytes
 under opaque keys in a configurable local storage root. Department workspaces come
@@ -726,7 +727,10 @@ from real `departments` rows, and owner APIs plus future agent tools must share 
 permission- and quota-enforcing service. The future 3D room is a projection of that
 committed state: rack counts, usage, health and activity can never be decorative
 values. See the feature document for the schema, atomic-write boundary, integration
-with current attachments/apps/run outputs, security limitations and UI direction.
+with current attachments/apps/run outputs, security limitations and UI direction. Rack
+meshes are fixed physical equipment; displayed counts, byte usage, configuration and
+activity state come from the database/configuration endpoint and degrade honestly when
+the backend is unavailable.
 
 ### Performance budget and measurements
 

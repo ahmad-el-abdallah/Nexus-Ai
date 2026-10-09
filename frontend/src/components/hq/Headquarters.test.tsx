@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { Employee } from "@/lib/employees";
 import { useEmployeeStore } from "@/world/state/employeeStore";
 import { useOfficeStore } from "@/world/state/officeStore";
+import { useStorageStore } from "@/world/state/storageStore";
 
 import { FloorStack } from "./Controls";
 import { EmployeePanel } from "./EmployeePanel";
@@ -13,6 +14,7 @@ import { RoomPanel } from "./RoomPanel";
 
 const initial = useOfficeStore.getState();
 const initialEmployees = useEmployeeStore.getState();
+const initialStorage = useStorageStore.getState();
 
 const person = (over: Partial<Employee> = {}): Employee => ({
   id: "emp_aaaaaaaaaaaa",
@@ -36,6 +38,7 @@ function json(body: unknown, status = 200) {
 beforeEach(() => {
   useOfficeStore.setState(initial, true);
   useEmployeeStore.setState(initialEmployees, true);
+  useStorageStore.setState(initialStorage, true);
   // The status pill polls the backend; keep it offline in tests.
   vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new TypeError("offline")));
 });
@@ -51,7 +54,7 @@ describe("Headquarters without WebGL (jsdom)", () => {
   it("shows every room in the plan and opens details on click", async () => {
     render(<Headquarters />);
     const plan = await screen.findByTestId("floor-plan-2d");
-    for (const name of ["Reception", "Sales", "Marketing", "Executive Office", "Meeting Room", "Engineering"]) {
+    for (const name of ["Reception", "Sales", "Marketing", "Executive Office", "Meeting Room", "Engineering", "Data Center"]) {
       expect(within(plan).getByRole("button", { name: new RegExp(`^${name}`) })).toBeInTheDocument();
     }
     fireEvent.click(within(plan).getByRole("button", { name: /^Engineering/ }));
@@ -97,6 +100,40 @@ describe("RoomPanel", () => {
     useOfficeStore.getState().selectRoom("cafe");
     render(<RoomPanel />);
     expect(screen.getByTestId("room-panel")).not.toHaveTextContent("Team");
+  });
+
+  it("shows real read-only storage metadata in the Data Center", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        json({
+          status: "metadata_ready",
+          backend: "local",
+          writes_enabled: false,
+          workspace_count: 21,
+          department_workspace_count: 20,
+          entry_count: 3,
+          file_count: 2,
+          folder_count: 1,
+          version_count: 4,
+          stored_bytes: 1536,
+          quota_bytes_per_department: 10 * 1024 * 1024 * 1024,
+          backup_configured: false,
+          last_event_at: null,
+        }),
+      ),
+    );
+    useOfficeStore.getState().selectRoom("data-center");
+    render(<RoomPanel />);
+    const panel = screen.getByTestId("room-panel");
+    expect(within(panel).getByRole("heading", { name: "Data Center" })).toBeInTheDocument();
+    expect(await within(panel).findByText("Metadata online")).toBeInTheDocument();
+    expect(panel).toHaveTextContent("Workspaces21");
+    expect(panel).toHaveTextContent("Files2");
+    expect(panel).toHaveTextContent("Stored1.5 KiB");
+    expect(panel).toHaveTextContent("No storage activity has been recorded yet");
+    expect(within(panel).getByRole("button", { name: /Digital Vault file operations/ })).toBeDisabled();
+    expect(panel).not.toHaveTextContent("Team");
   });
 });
 

@@ -294,6 +294,9 @@ async def test_configure_department_validation(client: httpx.AsyncClient) -> Non
         await client.patch("/api/departments/finance", json={"room_id": "cafe"})
     ).status_code == 422
     assert (
+        await client.patch("/api/departments/finance", json={"room_id": "data-center"})
+    ).status_code == 422
+    assert (
         await client.patch("/api/departments/finance", json={"color": "red"})
     ).status_code == 422
     assert (

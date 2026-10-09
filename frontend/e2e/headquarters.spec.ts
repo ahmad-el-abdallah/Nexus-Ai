@@ -8,7 +8,7 @@ test.describe("3D headquarters", () => {
     await page.goto("/");
     await waitForOffice(page);
     await expect(page.getByRole("img", { name: /3D view of the NEXUS AI headquarters/ }).or(page.locator("canvas"))).toBeVisible();
-    for (const id of ["executive", "meeting", "engineering", "sales", "reception", "marketing"]) {
+    for (const id of ["executive", "meeting", "engineering", "data-center", "sales", "reception", "marketing"]) {
       await expect(page.locator(`[data-room-label="${id}"]`)).toBeVisible();
     }
     // Rooms hidden under level 2 are not labelled in the overview.
@@ -31,6 +31,19 @@ test.describe("3D headquarters", () => {
     expect(after.zoom).toBeGreaterThan(before.zoom * 1.3);
     await page.keyboard.press("Escape");
     await expect(panel).toBeHidden();
+  });
+
+  test("the Data Center is visible and reports backend storage metadata", async ({ page }) => {
+    await page.goto("/");
+    await waitForOffice(page);
+    await page.locator('[data-room-label="data-center"]').click();
+    const panel = page.getByTestId("room-panel");
+    await expect(panel.getByRole("heading", { name: "Data Center" })).toBeVisible();
+    await expect(panel.getByText("Metadata online")).toBeVisible();
+    await expect(panel).toContainText("Read-only");
+    await expect(panel.getByRole("button", { name: /Digital Vault file operations/ })).toBeDisabled();
+    await settle(page);
+    await page.screenshot({ path: "../.artifacts/e2e/data-center.png" });
   });
 
   test("clicking a room's floor in 3D selects it (raycast)", async ({ page }) => {

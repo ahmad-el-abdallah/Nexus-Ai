@@ -303,8 +303,9 @@ function serverRack(): PartsBuilder {
   for (let i = 0; i < 18; i++) {
     const y = 0.2 + i * 0.095;
     b.box([0.46, 0.06, 0.012], { position: [0, y, 0.512], color: "#2d3348" });
-    b.box([0.02, 0.014, 0.006], { position: [-0.19, y, 0.52], color: i % 3 === 0 ? "#22d3ee" : "#4ade80", finish: "glow", intensity: 2.5 });
-    if (i % 2 === 0) b.box([0.02, 0.014, 0.006], { position: [-0.15, y, 0.52], color: "#4ade80", finish: "glow", intensity: 2.2 });
+    // Ambient hardware illumination only. Operational health comes from the API panel.
+    b.box([0.02, 0.014, 0.006], { position: [-0.19, y, 0.52], color: i % 3 === 0 ? "#a78bfa" : "#22d3ee", finish: "glow", intensity: 2.5 });
+    if (i % 2 === 0) b.box([0.02, 0.014, 0.006], { position: [-0.15, y, 0.52], color: "#6366f1", finish: "glow", intensity: 2.2 });
   }
   b.box([0.6, 0.02, 0.02], { position: [0, 1.99, 0.5], color: P.cyan, finish: "glow", intensity: 1.6 });
   return b;

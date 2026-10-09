@@ -117,11 +117,13 @@ project directory, so stop `make dev` first.
 
 Shell environment variables override `.env` values.
 
-#### Data Center storage (DC-1 foundation)
+#### Data Center storage (DC-2 read-only projection)
 
-These server-side settings are implemented and validated. The DC-1 metadata foundation
-does not yet provide file operations; implementation and test evidence are tracked in
-[`DATA_CENTER.md`](DATA_CENTER.md).
+These server-side settings are implemented and validated. `GET /api/storage/overview`
+returns safe aggregate metadata for the 3D Data Center panel without exposing file
+names, storage keys or server paths. It is intentionally read-only: the current
+foundation does not yet provide file operations. Implementation and test evidence are
+tracked in [`DATA_CENTER.md`](DATA_CENTER.md).
 
 | Variable | Default | Purpose |
 | --- | --- | --- |

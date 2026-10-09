@@ -127,13 +127,24 @@ export const ROOMS: RoomDef[] = [
     id: "engineering",
     name: "Engineering",
     floor: "L2",
-    rect: rect(0, -11, 16, 1),
+    rect: rect(0, -11, 10.8, 1),
     kind: "department",
     department: "engineering",
     accent: "#22d3ee",
     finish: "carpet",
     description:
       "Software architecture, development, DevOps and AI engineering. Code execution is sandboxed and permissioned.",
+  },
+  {
+    id: "data-center",
+    name: "Data Center",
+    floor: "L2",
+    rect: rect(10.8, -11, 16, 1),
+    kind: "infrastructure",
+    accent: "#8b5cf6",
+    finish: "tile",
+    description:
+      "The Digital Vault operations room. Its panel shows live aggregate metadata; file operations remain unavailable until the storage service is implemented.",
   },
 ];
 
@@ -211,7 +222,7 @@ export const WALLS: WallDef[] = [
     kind: "exterior",
     cutNormal: [1, 0],
     windows: true,
-    openings: [{ at: 9.5, width: 1.6, door: "slide-double", rooms: ["engineering"] }],
+    openings: [{ at: 9.5, width: 1.6, door: "slide-double", rooms: ["data-center"] }],
   },
   { id: "l2-balcony", floor: "L2", from: [-16, 1], to: [16, 1], kind: "railing" },
   {
@@ -229,6 +240,14 @@ export const WALLS: WallDef[] = [
     to: [0, 1],
     kind: "glass",
     openings: [{ at: 10, width: 1.2, door: "slide", rooms: ["meeting", "engineering"] }],
+  },
+  {
+    id: "l2-data-center",
+    floor: "L2",
+    from: [10.8, -11],
+    to: [10.8, 1],
+    kind: "glass",
+    openings: [{ at: 9.5, width: 1.4, door: "slide", rooms: ["engineering", "data-center"] }],
   },
 ];
 
@@ -251,7 +270,8 @@ export const WALL_ITEMS: WallItemDef[] = [
   { id: "board-executive", wall: "l2-ext-left", at: 5, y: 1.65, width: 2.8, height: 1.55, facing: [1, 0], accent: "#a78bfa", content: { kind: "board", title: "Company overview", body: "No projects yet" } },
   { id: "screen-meeting", wall: "l2-ext-back", at: 12.5, y: 1.65, width: 3.2, height: 1.8, facing: [0, 1], accent: "#818cf8", content: { kind: "board", title: "Meeting room", body: "No meetings scheduled" } },
   { id: "board-engineering", wall: "l2-ext-back", at: 21, y: 1.65, width: 3.6, height: 1.8, facing: [0, 1], accent: "#22d3ee", content: { kind: "board", title: "Engineering board", body: "No tasks yet" } },
-  { id: "sign-engineering", wall: "l2-ext-back", at: 29, y: 2.55, width: 3.0, height: 0.65, facing: [0, 1], accent: "#22d3ee", content: { kind: "sign", title: "Engineering", subtitle: "Department" } },
+  { id: "sign-engineering", wall: "l2-ext-back", at: 25.2, y: 2.55, width: 3.0, height: 0.65, facing: [0, 1], accent: "#22d3ee", content: { kind: "sign", title: "Engineering", subtitle: "Department" } },
+  { id: "sign-data-center", wall: "l2-ext-back", at: 29.2, y: 2.55, width: 3.0, height: 0.65, facing: [0, 1], accent: "#8b5cf6", content: { kind: "sign", title: "Data Center", subtitle: "Digital Vault" } },
 ];
 
 // ---------------------------------------------------------------------------
@@ -277,9 +297,9 @@ export const WORKSTATIONS: Workstation[] = [
   ...pod("marketing", "L1", 8.6, 6.0, 1, 1),
   ...pod("marketing", "L1", 12.8, 6.0, 5, 1, 1),
   { id: "executive-desk-1", room: "executive", floor: "L2", x: -11.5, z: -7.2, rot: Math.PI, monitors: 1, style: "executive" },
-  ...pod("engineering", "L2", 3.2, -6.0, 1, 2),
-  ...pod("engineering", "L2", 7.8, -6.0, 5, 2),
-  ...pod("engineering", "L2", 12.4, -6.0, 9, 2),
+  ...pod("engineering", "L2", 8.0, -4.0, 1, 2),
+  ...pod("engineering", "L2", 2.3, -7.5, 5, 2),
+  ...pod("engineering", "L2", 7.0, -7.5, 9, 2),
 ];
 
 /** Desk and chair placements derived from a workstation. */
@@ -411,20 +431,19 @@ const DECOR: Placement[] = [
   at("plant", "meeting", "L2", -6.3, 0.3),
   at("plant", "meeting", "L2", -0.7, 0.3),
   // Engineering
-  at("serverRack", "engineering", "L2", 12.0, -10.4),
-  at("serverRack", "engineering", "L2", 12.7, -10.4),
-  at("serverRack", "engineering", "L2", 13.4, -10.4),
-  at("serverRack", "engineering", "L2", 14.1, -10.4),
-  at("collabTable", "engineering", "L2", 7.0, -1.6),
-  at("stool", "engineering", "L2", 6.2, -0.75, Math.PI),
-  at("stool", "engineering", "L2", 7.8, -0.75, Math.PI),
-  at("stool", "engineering", "L2", 6.2, -2.45),
-  at("stool", "engineering", "L2", 7.8, -2.45),
+  at("collabTable", "engineering", "L2", 4.5, -1.6),
+  at("stool", "engineering", "L2", 3.7, -0.75, Math.PI),
+  at("stool", "engineering", "L2", 5.3, -0.75, Math.PI),
+  at("stool", "engineering", "L2", 3.7, -2.45),
+  at("stool", "engineering", "L2", 5.3, -2.45),
   at("plantTall", "engineering", "L2", 0.7, -10.3),
-  at("plant", "engineering", "L2", 15.4, -10.3),
-  at("plantTall", "engineering", "L2", 15.3, 0.3),
   at("plant", "engineering", "L2", 0.7, 0.3),
-  at("plantTall", "engineering", "L2", 10.6, -10.3),
+  at("plantTall", "engineering", "L2", 10.3, -10.3),
+  // Data Center — fixed physical equipment. Live counts and health are shown only
+  // in the backend-connected room panel, never inferred from these meshes.
+  ...[12.0, 13.5, 15.0].flatMap((x) =>
+    [-9.8, -8.0, -6.2, -4.4].map((z) => at("serverRack", "data-center", "L2", x, z)),
+  ),
   // Outdoor site (on the plinth)
   at("gate", null, "L1", 0, 13.6),
   at("tree", null, "L1", -18.3, 13.6),

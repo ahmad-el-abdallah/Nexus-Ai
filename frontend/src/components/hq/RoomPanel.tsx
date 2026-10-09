@@ -1,13 +1,15 @@
 "use client";
 
 import Link from "next/link";
+import { useEffect } from "react";
 
-import { WORKSTATIONS } from "@/world/layout/building";
+import { PLACEMENTS, WORKSTATIONS } from "@/world/layout/building";
 import { FLOOR_BY_ID, ROOM_BY_ID, roomStats } from "@/world/layout/queries";
 import { chatHref } from "@/lib/routing";
 import { useDepartmentStore } from "@/world/state/departmentStore";
 import { useEmployeeStore } from "@/world/state/employeeStore";
 import { useOfficeStore } from "@/world/state/officeStore";
+import { useStorageStore } from "@/world/state/storageStore";
 
 import { Initials, StatusBadge } from "./people";
 
@@ -16,7 +18,75 @@ const KIND_LABEL = {
   meeting: "Meeting room",
   reception: "Reception",
   amenity: "Amenity",
+  infrastructure: "Infrastructure",
 } as const;
+
+function bytes(value: number): string {
+  if (value < 1024) return `${value} B`;
+  const units = ["KiB", "MiB", "GiB", "TiB"];
+  let amount = value / 1024;
+  let unit = units[0];
+  for (let i = 1; i < units.length && amount >= 1024; i++) {
+    amount /= 1024;
+    unit = units[i]!;
+  }
+  return `${amount >= 10 ? amount.toFixed(0) : amount.toFixed(1)} ${unit}`;
+}
+
+function DataCenterStatus() {
+  const overview = useStorageStore((s) => s.overview);
+  const load = useStorageStore((s) => s.load);
+  const error = useStorageStore((s) => s.error);
+  const refresh = useStorageStore((s) => s.refresh);
+
+  if (load === "idle" || load === "loading") {
+    return <p role="status" className="mt-5 rounded-xl bg-white/[0.03] px-4 py-4 text-sm text-nx-muted ring-1 ring-nx-line">Reading storage metadata…</p>;
+  }
+  if (load === "error" || !overview) {
+    return (
+      <section className="mt-5 rounded-xl bg-nx-error/10 p-4 text-sm ring-1 ring-nx-error/30" aria-label="Storage status">
+        <p className="font-medium text-nx-error">Storage status unavailable</p>
+        <p className="mt-1 text-nx-muted">{error ?? "The backend did not return storage metadata."}</p>
+        <button type="button" onClick={() => void refresh()} className="mt-3 rounded-lg px-3 py-1.5 text-xs text-nx-text ring-1 ring-nx-line-strong hover:bg-white/5">Retry</button>
+      </section>
+    );
+  }
+
+  const facts: Array<[string, string]> = [
+    ["Workspaces", String(overview.workspace_count)],
+    ["Departments", String(overview.department_workspace_count)],
+    ["Files", String(overview.file_count)],
+    ["Versions", String(overview.version_count)],
+    ["Stored", bytes(overview.stored_bytes)],
+    ["Dept. quota", bytes(overview.quota_bytes_per_department)],
+  ];
+  return (
+    <section className="mt-5" aria-label="Storage status" data-testid="storage-overview">
+      <div className="flex items-center justify-between gap-3 rounded-xl bg-nx-violet/10 px-4 py-3 ring-1 ring-nx-violet/30">
+        <span className="flex items-center gap-2 text-sm font-medium text-nx-text">
+          <span className="size-2 rounded-full bg-nx-cyan shadow-[0_0_10px_rgb(34_211_238/0.8)]" />
+          Metadata online
+        </span>
+        <span className="font-mono text-[11px] tracking-wider text-nx-muted uppercase">{overview.backend}</span>
+      </div>
+      <dl className="mt-3 grid grid-cols-2 gap-px overflow-hidden rounded-xl bg-nx-line">
+        {facts.map(([label, value]) => (
+          <div key={label} className="bg-nx-bg/80 px-4 py-3">
+            <dt className="text-[10px] tracking-wider text-nx-faint uppercase">{label}</dt>
+            <dd className="mt-1 font-mono text-sm text-nx-text">{value}</dd>
+          </div>
+        ))}
+      </dl>
+      <div className="mt-3 rounded-xl bg-white/[0.03] px-4 py-3 text-xs leading-5 text-nx-muted ring-1 ring-nx-line">
+        <p>{overview.last_event_at ? "Storage activity is recorded in the audit log." : "No storage activity has been recorded yet."}</p>
+        <p>{overview.backup_configured ? "A backup destination is configured; restore verification is still pending." : "No backup destination is configured."}</p>
+      </div>
+      <button type="button" disabled className="mt-3 w-full cursor-not-allowed rounded-xl bg-white/[0.03] px-4 py-3 text-sm text-nx-faint ring-1 ring-nx-line" title="File operations arrive in the next approved storage stage">
+        Digital Vault file operations · Not available yet
+      </button>
+    </section>
+  );
+}
 
 /** Details of the selected room. Only facts from the layout and real (empty) state. */
 export function RoomPanel() {
@@ -26,6 +96,10 @@ export function RoomPanel() {
   const employees = useEmployeeStore((s) => s.employees);
   const rosterLoad = useEmployeeStore((s) => s.load);
   const departments = useDepartmentStore((s) => s.departments);
+  const refreshStorage = useStorageStore((s) => s.refresh);
+  useEffect(() => {
+    if (roomId === "data-center") void refreshStorage();
+  }, [roomId, refreshStorage]);
   const room = roomId ? ROOM_BY_ID.get(roomId) : undefined;
   if (!room) return null;
   const stats = roomStats(room.id);
@@ -34,12 +108,21 @@ export function RoomPanel() {
   const team = employees.filter((e) => e.desk_id && desks.has(e.desk_id));
   const active = team.filter((e) => e.status !== "suspended" && e.status !== "idle").length;
 
-  const facts: Array<[string, string]> = [
-    ["Floor", floor.shortName],
-    ["Area", `${stats.area} m²`],
-    ["Workstations", String(stats.workstations)],
-    ["Seating", String(stats.seats)],
-  ];
+  const racks = PLACEMENTS.filter((p) => p.room === room.id && p.type === "serverRack").length;
+  const facts: Array<[string, string]> =
+    room.kind === "infrastructure"
+      ? [
+          ["Floor", floor.shortName],
+          ["Area", `${stats.area} m²`],
+          ["Racks", String(racks)],
+          ["View", "Read-only"],
+        ]
+      : [
+          ["Floor", floor.shortName],
+          ["Area", `${stats.area} m²`],
+          ["Workstations", String(stats.workstations)],
+          ["Seating", String(stats.seats)],
+        ];
 
   return (
     <aside
@@ -96,7 +179,9 @@ export function RoomPanel() {
         ))}
       </dl>
 
-      {room.kind !== "amenity" && (
+      {room.kind === "infrastructure" && <DataCenterStatus />}
+
+      {room.kind !== "amenity" && room.kind !== "infrastructure" && (
         <section className="mt-5 space-y-2 text-sm" aria-label="Team">
           {room.kind !== "meeting" && (
             <div className="rounded-xl bg-white/[0.03] ring-1 ring-nx-line">

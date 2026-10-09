@@ -23,7 +23,7 @@ const overlaps = (a: Rect, b: Rect, eps = 0.01) =>
 
 describe("headquarters layout", () => {
   it("contains every room Stage 2 requires", () => {
-    const required = ["reception", "executive", "marketing", "engineering", "sales", "meeting"];
+    const required = ["reception", "executive", "marketing", "engineering", "sales", "meeting", "data-center"];
     for (const id of required) expect(ROOM_BY_ID.has(id), id).toBe(true);
   });
 
@@ -99,7 +99,7 @@ describe("headquarters layout", () => {
         }
       }
     }
-    expect(zones).toBe(12);
+    expect(zones).toBe(13);
     expect(blocked).toEqual([]);
   });
 
@@ -144,7 +144,9 @@ describe("headquarters layout", () => {
     expect(roomStats("executive").workstations).toBe(1);
     expect(roomStats("meeting").seats).toBe(9);
     expect(roomStats("meeting").workstations).toBe(0);
-    expect(roomStats("engineering").area).toBe(192);
+    expect(roomStats("engineering").area).toBe(130);
+    expect(roomStats("data-center").area).toBe(62);
+    expect(PLACEMENTS.filter((p) => p.room === "data-center" && p.type === "serverRack")).toHaveLength(12);
   });
 });
 
@@ -177,7 +179,7 @@ describe("room search", () => {
     expect(searchRooms("eng").map((r) => r.id)).toEqual(["engineering"]);
     expect(searchRooms("SALES").map((r) => r.id)).toEqual(["sales"]);
     expect(searchRooms("amenity").map((r) => r.id).sort()).toEqual(["cafe", "lounge"]);
-    expect(searchRooms("level 2").length).toBe(3);
+    expect(searchRooms("level 2").length).toBe(4);
     expect(searchRooms("  ").length).toBe(ROOMS.length);
     expect(searchRooms("zzz")).toEqual([]);
   });

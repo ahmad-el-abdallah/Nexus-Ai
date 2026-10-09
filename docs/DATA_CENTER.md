@@ -4,9 +4,10 @@ This document is the architecture and delivery tracker for the **Data Center & D
 Vault** feature. It is a separate, approval-gated feature track named **DC-1** through
 **DC-8** so that it cannot be confused with NEXUS AI's existing 16-stage roadmap.
 
-> **Current status:** DC-1 was completed on 2026-10-09 and is awaiting approval for
-> DC-2. The global product remains at **Stage 10 of 16**, with Stage 11 unapproved. No
-> file-operation API, file explorer or 3D server room is available yet.
+> **Current status:** DC-2 was completed on 2026-10-09 and is awaiting approval for
+> DC-3. The global product remains at **Stage 10 of 16**, with Stage 11 unapproved. The
+> 3D room and its safe read-only metadata projection are available; file operations and
+> the explorer are not.
 
 ## Product contract
 
@@ -35,11 +36,11 @@ reported, then stop for the owner's approval before the next one begins.
 
 | ID | Scope | Status |
 | --- | --- | --- |
-| DC-1 | Project inspection, storage architecture, configuration and schema foundation | ✅ Complete — awaiting approval for DC-2 |
-| DC-2 | Real storage backend: upload, download, folders, rename, move, trash and validation | ⏳ Not started; requires approval after DC-1 |
-| DC-3 | Dynamic department workspaces, quotas, permissions and task/app associations | ⏳ Not started |
-| DC-4 | Professional file explorer, search, previews, metadata and ZIP export | ⏳ Not started |
-| DC-5 | 3D Data Center room, racks, camera interactions and backend-connected status | ⏳ Not started |
+| DC-1 | Project inspection, storage architecture, configuration and schema foundation | ✅ Complete |
+| DC-2 | Visible 3D Data Center room, 2D fallback and backend-connected read-only overview | ✅ Complete — awaiting approval for DC-3 |
+| DC-3 | Real storage backend: upload, download, folders, rename, move, trash and validation | ⏳ Not started; requires approval after DC-2 |
+| DC-4 | Dynamic department workspaces, quotas, permissions and task/app associations | ⏳ Not started |
+| DC-5 | Professional file explorer, search, previews, metadata and ZIP export | ⏳ Not started |
 | DC-6 | Automatic registration of real AI employee artifacts | ⏳ Not started |
 | DC-7 | Engineering project viewer, immutable versions, restore, diffs and dashboards | ⏳ Not started |
 | DC-8 | Backup/recovery, integrity, permission boundaries, performance and final polish | ⏳ Not started |
@@ -118,12 +119,12 @@ user files:
   `(workspace_id, path_key)` is unique, avoiding nullable-root uniqueness differences.
 - **`storage_versions`** — version records with `(entry, number)` uniqueness, opaque
   storage key, byte size, SHA-256, MIME type, change description, creator and integrity
-  state. Blob creation itself begins in DC-2.
+  state. Blob creation itself begins in DC-3.
 - **`storage_links`** — idempotent provenance links to tasks, workflows, apps, app
   versions/files, code runs, messages and the future canonical project model.
 - **`storage_tags`** — normalized, case-insensitive tag keys for portable search.
 - **`storage_grants`** — department/employee read, write or manage grants with grantor,
-  expiry and revocation history. Enforcement begins with the service layer in DC-2/DC-3.
+  expiry and revocation history. Enforcement begins with the service layer in DC-3/DC-4.
 - **`storage_events`** — append-only audit/failure records whose actor snapshots survive
   employee or artifact removal.
 
@@ -144,7 +145,7 @@ blobs use opaque keys below the configured root. A write is designed to:
 The filesystem and SQL database cannot share one atomic transaction. Immutable blobs,
 explicit operation states and reconciliation make that boundary observable instead of
 silently reporting success. No download endpoint accepts a filesystem path. DC-1's
-logical-name layer rejects absolute paths, drive/UNC paths, `..` and NUL bytes; DC-2's
+logical-name layer rejects absolute paths, drive/UNC paths, `..` and NUL bytes; DC-3's
 local backend must additionally reject symbolic-link traversal.
 
 ### Permission boundary
@@ -169,7 +170,8 @@ never included in API responses, logs or model prompts.
 ## UI direction from the supplied reference
 
 The owner-supplied **Web App Sandbox Interface Overview** is a visual reference, not a
-completed NEXUS screen. Future DC-4/DC-5/DC-7 work should carry forward these qualities:
+completed NEXUS screen. DC-2 begins applying its visual language; future DC-5/DC-7 work
+should carry forward these qualities:
 
 - a premium dark workspace with restrained blue-to-purple accents and high-contrast
   typography consistent with the existing NEXUS design tokens;
@@ -209,15 +211,48 @@ storage roots; the owner's running `~/nexus-ai` data and real providers were not
 | Isolated full-stack smoke test | **PASS** — pages, APIs, proxy failure and SSE |
 | Playwright browser suite | **FAIL** — 51 passed; the existing employee walk test stayed `walking` instead of reaching `away` under software GL. The isolated test failed the same way on a second run; normal GPU flags could not initialize the WSL office. No DC-1 frontend/3D code changed. |
 
-DC-2 must add streaming size/quota enforcement, atomic blob commits, missing/corrupt
-blob reconciliation and symlink-safe local storage tests; DC-1 does not claim those
+DC-3 must add streaming size/quota enforcement, atomic blob commits, missing/corrupt
+blob reconciliation and symlink-safe local storage tests; DC-1/DC-2 do not claim those
 file operations exist.
+
+## DC-2 implementation
+
+- Level 2 now contains a dedicated **Data Center** beside Engineering, separated by a
+  glass wall and enterable door. It is part of the same room model, camera controls,
+  room search, accessible 2D plan and responsive details panel as every other room.
+- Twelve rack meshes form the physical room. Their lighting is explicitly ambient; it
+  does not claim per-rack health or storage activity.
+- `GET /api/storage/overview` returns aggregate workspace, entry, version, byte, quota,
+  backup-configuration and latest-event facts from the real database and settings. It
+  never returns file names, contents, storage keys or server paths.
+- The room panel shows loading, live, empty and backend-unavailable states. The Digital
+  Vault action is visibly disabled because file operations do not exist yet.
+- Engineering retains all twelve workstation IDs and therefore preserves existing
+  employee desk assignments while fitting within its resized room.
+
+## DC-2 verification
+
+Backend and full-stack verification runs in the isolated WSL development copy with
+temporary databases, storage roots and fake providers. Frontend-only checks run from
+the shared working tree.
+
+| Check | Result |
+| --- | --- |
+| Storage overview and storage-foundation tests | **PASS** — 27 tests |
+| Complete backend suite | **PASS** — 248 passed, 4 skipped |
+| Backend Ruff; frontend ESLint and TypeScript | **PASS** |
+| Frontend unit suite | **PASS** — 188 tests |
+| Next.js production build | **PASS** — 21 routes generated |
+| Isolated full-stack smoke test | **PASS** — including direct and proxied storage overview |
+| Data Center browser flow and screenshot | **PASS** — room selection, live metadata, read-only states and disabled file operations |
+| Full Playwright browser suite | **PARTIAL** — 52 passed and 2 failed on the first full software-GL run. The new character-click regression was fixed and its focused rerun passed. The remaining pre-existing suspended-walk test again stayed `walking` instead of reaching `away`; its exact isolated rerun failed identically. |
 
 ## Current limitations
 
-- DC-1 provides configuration, logical path rules, metadata models and migration only;
-  there is no Vault service or file-operation API yet.
-- There is no file explorer, Data Center room, rack status, dashboard or mobile Vault
+- DC-1/DC-2 provide configuration, logical path rules, metadata models, migration, a
+  visible room and a read-only aggregate endpoint; there is no Vault service or
+  file-operation API yet.
+- There is no file explorer, per-rack health, writable dashboard or mobile Vault
   interface yet.
 - Existing chat, app and code-run files have not been migrated or registered.
 - Automatic AI artifact tools, version restore, sharing, backup and integrity scanning

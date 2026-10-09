@@ -264,7 +264,6 @@ export const AMBIENT_SPOTS: Record<FloorId, Array<Point & { yaw: number; label: 
   ],
   L2: [
     { x: 6.4, z: -0.25, yaw: Math.PI, label: "standing table" },
-    { x: 13.0, z: -9.25, yaw: Math.PI, label: "server racks" },
     { x: -14.9, z: -5.0, yaw: -Math.PI / 2, label: "window" },
   ],
 };
