@@ -713,6 +713,21 @@ CEO (capped at 14 kB).
   content changes (the scene keeps rendering on demand). "View screen" in the employee
   panel moves the camera over their shoulder to read it.
 
+### Data Center and Digital Vault (separate DC feature track)
+
+The Data Center is tracked independently as **DC-1 through DC-8** in
+[`DATA_CENTER.md`](DATA_CENTER.md). DC-1's architecture, configuration and metadata
+foundation are complete; it does not advance the global 16-stage roadmap, and no Vault
+file API, explorer or 3D server room is claimed yet.
+
+The design keeps searchable metadata in the existing database and immutable bytes
+under opaque keys in a configurable local storage root. Department workspaces come
+from real `departments` rows, and owner APIs plus future agent tools must share one
+permission- and quota-enforcing service. The future 3D room is a projection of that
+committed state: rack counts, usage, health and activity can never be decorative
+values. See the feature document for the schema, atomic-write boundary, integration
+with current attachments/apps/run outputs, security limitations and UI direction.
+
 ### Performance budget and measurements
 
 

@@ -76,6 +76,8 @@ export default defineConfig({
         // Stand-in speech engines (allowed only with NEXUS_ENV=test): no 300 MB model downloads.
         NEXUS_VOICE_FAKE: "1",
         NEXUS_VOICE_DIR: `/tmp/nexus-e2e-voice-${API_PORT}`,
+        // Vault work must never touch the developer's or owner's persistent storage.
+        NEXUS_STORAGE_ROOT: `/tmp/nexus-e2e-storage-${API_PORT}`,
         NEXUS_SECRET_KEY: E2E_SECRET_KEY,
         NEXUS_PUBLIC_URL: `http://127.0.0.1:${PORT}`,
         // The fake mail control port also serves a fake Brevo API.

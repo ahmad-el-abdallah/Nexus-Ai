@@ -18,6 +18,12 @@ screen is simulated.
 > writes the files of their role, and the stored app can be downloaded, run here in a
 > sandbox, or changed. See [`docs/STAGES.md`](docs/STAGES.md).
 
+> **Data Center feature track:** DC-1 architecture and metadata foundation is complete
+> and awaiting approval for DC-2. It is tracked separately from the 16-stage roadmap
+> and does not approve Stage 11. No Digital Vault file API, explorer or 3D server room
+> is claimed yet. See
+> [`docs/DATA_CENTER.md`](docs/DATA_CENTER.md).
+
 ## Quick start
 
 Prerequisites: **Node.js 20.9+**, **uv** ([install](https://docs.astral.sh/uv/getting-started/installation/)),
@@ -67,6 +73,7 @@ make help    # every command
 | Document | What it covers |
 | --- | --- |
 | [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | Target system architecture for all 16 stages, security model, performance budget |
+| [`docs/DATA_CENTER.md`](docs/DATA_CENTER.md) | Data Center architecture, DC-1–DC-8 tracker, storage and security decisions |
 | [`docs/DEVELOPMENT.md`](docs/DEVELOPMENT.md) | Setup, configuration, scripts, migrations, testing, troubleshooting |
 | [`docs/STAGES.md`](docs/STAGES.md) | Stage plan, acceptance criteria and stage reports |
 | [`docs/adr/`](docs/adr) | Architecture decision records (stack, email sending) |

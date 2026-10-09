@@ -22,6 +22,14 @@ reported, and the next stage starts only after the owner's explicit approval.
 | 15 | Security, automation & reliability | ⏳ Not started |
 | 16 | Final polish, testing & release preparation | ⏳ Not started |
 
+### Separate Data Center feature track
+
+The Data Center & Digital Vault is tracked as **DC-1 through DC-8** in
+[`DATA_CENTER.md`](DATA_CENTER.md). DC-1's architecture, configuration and metadata
+foundation are complete and awaiting approval for DC-2. This feature track does not
+change the global status above: Stage 10 remains complete and Stage 11 has not been
+approved.
+
 ---
 
 ## Stage 1 — Repository, architecture & environment

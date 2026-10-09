@@ -36,6 +36,7 @@ cleanup() {
 trap cleanup EXIT
 
 export NEXUS_DATABASE_URL="sqlite+aiosqlite:///$TMP/smoke.db"
+export NEXUS_STORAGE_ROOT="$TMP/storage"
 export NEXUS_ENV=test
 export NEXUS_PORT="$API_PORT"
 export NEXUS_BACKEND_URL="$API"   # read by `next dev` at startup

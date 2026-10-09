@@ -117,6 +117,26 @@ project directory, so stop `make dev` first.
 
 Shell environment variables override `.env` values.
 
+#### Data Center storage (DC-1 foundation)
+
+These server-side settings are implemented and validated. The DC-1 metadata foundation
+does not yet provide file operations; implementation and test evidence are tracked in
+[`DATA_CENTER.md`](DATA_CENTER.md).
+
+| Variable | Default | Purpose |
+| --- | --- | --- |
+| `NEXUS_STORAGE_BACKEND` | `local` | Blob backend; DC-1 supports local storage only |
+| `NEXUS_STORAGE_ROOT` | `backend/var/storage` | Private root for committed and temporary blobs |
+| `NEXUS_STORAGE_MAX_FILE_BYTES` | `104857600` | Maximum bytes in one file (100 MiB) |
+| `NEXUS_STORAGE_DEPARTMENT_QUOTA_BYTES` | `10737418240` | Default logical department quota (10 GiB) |
+| `NEXUS_STORAGE_ALLOWED_EXTENSIONS` | Initial documented file-type allowlist | Comma-separated extensions accepted by storage policy |
+| `NEXUS_STORAGE_BACKUP_ROOT` | unset | Optional future local backup destination; unset means not configured |
+
+On Windows, the default root is inside the selected WSL run copy's `backend/var/` and
+is not copied back into the Windows Git checkout. Development tests must override it
+with a temporary path in `~/nexus-ai-dev`; they must never point at the owner's running
+`~/nexus-ai` data. A backup on the same physical drive is not disaster recovery.
+
 ### Frontend (`frontend/.env`)
 
 | Variable | Default | Purpose |

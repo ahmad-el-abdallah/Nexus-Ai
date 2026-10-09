@@ -27,6 +27,27 @@ from app.models.email import EmailAccount, EmailEvent, EmailMessage, EmailStatus
 from app.models.employee import Employee, EmployeeStatus
 from app.models.profile import EmployeeEvent, EmployeeEventKind, EmployeeFeedback
 from app.models.run import CodeRun, RunStatus
+from app.models.storage import (
+    StorageActorKind,
+    StorageEntry,
+    StorageEntryKind,
+    StorageEntryStatus,
+    StorageEvent,
+    StorageEventLevel,
+    StorageGrant,
+    StorageGranteeKind,
+    StorageLink,
+    StorageLinkTarget,
+    StorageOwnerKind,
+    StoragePermission,
+    StorageTag,
+    StorageVersion,
+    StorageVersionStatus,
+    StorageVisibility,
+    StorageWorkspace,
+    StorageWorkspaceScope,
+    StorageWorkspaceState,
+)
 from app.models.system import SystemMetadata
 from app.models.task import TERMINAL, Task, TaskStatus
 from app.models.voice import VoiceSettings
@@ -67,6 +88,25 @@ __all__ = [
     "MessageRole",
     "MessageStatus",
     "RunStatus",
+    "StorageActorKind",
+    "StorageEntry",
+    "StorageEntryKind",
+    "StorageEntryStatus",
+    "StorageEvent",
+    "StorageEventLevel",
+    "StorageGrant",
+    "StorageGranteeKind",
+    "StorageLink",
+    "StorageLinkTarget",
+    "StorageOwnerKind",
+    "StoragePermission",
+    "StorageTag",
+    "StorageVersion",
+    "StorageVersionStatus",
+    "StorageVisibility",
+    "StorageWorkspace",
+    "StorageWorkspaceScope",
+    "StorageWorkspaceState",
     "SystemMetadata",
     "Task",
     "TaskStatus",
