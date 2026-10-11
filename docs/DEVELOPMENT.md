@@ -117,7 +117,7 @@ project directory, so stop `make dev` first.
 
 Shell environment variables override `.env` values.
 
-#### Data Center storage (DC-7 versions, projects, dashboard and browser operations)
+#### Data Center storage (browser operations, versions, projects, dashboard, backup and sharing)
 
 These server-side settings are implemented and validated. `GET /api/storage/overview`
 returns safe aggregate metadata for the 3D Data Center panel without exposing file
@@ -153,6 +153,20 @@ side and 2,000 returned lines. `GET /api/storage/projects[/{app_id}]` backs
 `/vault/projects`, and `GET /api/storage/dashboard?utc_offset_minutes=…` backs
 `/vault/dashboard`; its day buckets use the caller's UTC offset.
 
+Backups need `NEXUS_STORAGE_BACKUP_ROOT`; without it every backup route answers 409 and
+the UI says backups are off. `POST /api/storage/backups` takes a snapshot,
+`POST /api/storage/backups/{id}/verify` re-reads every object of one,
+`GET …/{id}/deleted` lists files it holds that are no longer in the Vault and
+`POST …/{id}/recover` re-creates one of them under `Recovered from backup`.
+`POST /api/storage/maintenance/repair` checks integrity and restores missing or corrupt
+versions from the backups. `GET /api/storage/maintenance/integrity` reports the last
+check and the damaged versions; `POST /api/storage/maintenance/cleanup` with
+`{"confirm": true}` removes stored objects that no file refers to once they are more
+than an hour old. A backup covers Vault files only: the application database (chats,
+tasks, settings) is not part of it. `GET /api/storage/grants[?entry_id=…]` lists live
+sharing grants, and `GET /api/storage/search?shared=true` finds the shared items. All
+of this is on `/vault/protection`.
+
 | Variable | Default | Purpose |
 | --- | --- | --- |
 | `NEXUS_STORAGE_BACKEND` | `local` | Blob backend; DC-1 supports local storage only |
@@ -160,7 +174,8 @@ side and 2,000 returned lines. `GET /api/storage/projects[/{app_id}]` backs
 | `NEXUS_STORAGE_MAX_FILE_BYTES` | `104857600` | Maximum bytes in one file (100 MiB) |
 | `NEXUS_STORAGE_DEPARTMENT_QUOTA_BYTES` | `10737418240` | Default logical department quota (10 GiB) |
 | `NEXUS_STORAGE_ALLOWED_EXTENSIONS` | Initial documented file-type allowlist | Comma-separated extensions accepted by storage policy |
-| `NEXUS_STORAGE_BACKUP_ROOT` | unset | Optional future local backup destination; unset means not configured |
+| `NEXUS_STORAGE_BACKUP_ROOT` | unset | Local backup destination, separate from the storage root; unset means backups are off |
+| `NEXUS_STORAGE_BACKUP_KEEP` | `7` | Backups kept; older ones are removed after a successful backup |
 
 On Windows, the default root is inside the selected WSL run copy's `backend/var/` and
 is not copied back into the Windows Git checkout. Development tests must override it

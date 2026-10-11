@@ -7,9 +7,10 @@ const TABS = [
   { href: "/vault", label: "Files" },
   { href: "/vault/projects", label: "Engineering projects" },
   { href: "/vault/dashboard", label: "Dashboard" },
+  { href: "/vault/protection", label: "Protection" },
 ];
 
-/** The three Vault screens, shown under the page title on each of them. */
+/** The Vault screens, shown under the page title on each of them. */
 export function VaultTabs() {
   const path = usePathname() ?? "";
   return (

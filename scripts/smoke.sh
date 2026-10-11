@@ -37,6 +37,7 @@ trap cleanup EXIT
 
 export NEXUS_DATABASE_URL="sqlite+aiosqlite:///$TMP/smoke.db"
 export NEXUS_STORAGE_ROOT="$TMP/storage"
+export NEXUS_STORAGE_BACKUP_ROOT="$TMP/backups"
 export NEXUS_ENV=test
 export NEXUS_PORT="$API_PORT"
 export NEXUS_BACKEND_URL="$API"   # read by `next dev` at startup
@@ -111,12 +112,29 @@ if [[ "$upload_code" == "201" && -n "$upload_id" ]]; then
   fi
   check "GET /api/storage/dashboard" 200 "$API/api/storage/dashboard" '"versions":3'
   check "GET /api/storage/projects" 200 "$API/api/storage/projects" '^\['
+  # Backup: take one, verify it, then prove a permanently deleted file comes back from it.
+  snapshot_id="$(curl -s -X POST "$API/api/storage/backups" | sed -n 's/.*"id":"\(bkp_[^"]*\)".*/\1/p')"
+  if [[ -n "$snapshot_id" ]] && curl -fs -X POST "$API/api/storage/backups/$snapshot_id/verify" | grep -q '"healthy":true'; then
+    printf '  \033[32mPASS\033[0m  %s\n' "Digital Vault backup created and verified"
+  else
+    printf '  \033[31mFAIL\033[0m  %s\n' "Digital Vault backup failed"; failures=$((failures + 1))
+  fi
   if ! curl -fs -X DELETE "$API/api/storage/entries/$upload_id" -o /dev/null; then
     printf '  \033[31mFAIL\033[0m  %s\n' "Digital Vault trash failed"; failures=$((failures + 1))
   fi
   if ! curl -fs -X DELETE "$API/api/storage/entries/$upload_id/permanent?confirm=true" -o /dev/null; then
     printf '  \033[31mFAIL\033[0m  %s\n' "Digital Vault permanent delete failed"; failures=$((failures + 1))
   fi
+  deleted_in_backup="$(curl -fs "$API/api/storage/backups/$snapshot_id/deleted" || true)"
+  recovered_id="$(curl -s -H 'content-type: application/json' -d '{"entry_id":"'"$upload_id"'"}' "$API/api/storage/backups/$snapshot_id/recover" | sed -n 's/.*"id":"\([^"]*\)".*/\1/p')"
+  if grep -q '"total":1' <<<"$deleted_in_backup" && [[ -n "$recovered_id" && "$recovered_id" != "$upload_id" ]] \
+    && curl -fs "$API/api/storage/entries/$recovered_id/download" -o "$TMP/vault-recovered.txt" && cmp -s "$TMP/vault-smoke.txt" "$TMP/vault-recovered.txt"; then
+    printf '  \033[32mPASS\033[0m  %s\n' "Digital Vault deleted file recovered from backup"
+  else
+    printf '  \033[31mFAIL\033[0m  %s\n' "Digital Vault recovery from backup failed"; failures=$((failures + 1))
+  fi
+  check "GET /api/storage/maintenance/integrity" 200 "$API/api/storage/maintenance/integrity" '"damaged_total":0'
+  check "GET /api/storage/grants" 200 "$API/api/storage/grants" '^\['
 else
   printf '  \033[31mFAIL\033[0m  %s (got %s)\n' "POST Digital Vault file" "$upload_code"; failures=$((failures + 1))
 fi
@@ -126,6 +144,7 @@ check "GET /healthz"          200 "$WEB/healthz"          '"status":"ok"'
 check "GET / (headquarters)" 200 "$WEB/"                 'NEXUS AI'
 check "GET /vault"            200 "$WEB/vault"            'Digital Vault'
 check "GET /vault/projects"   200 "$WEB/vault/projects"   'Engineering projects'
+check "GET /vault/protection" 200 "$WEB/vault/protection" 'Digital Vault'
 check "GET /vault/dashboard"  200 "$WEB/vault/dashboard"  'Digital Vault'
 check "GET /system"           200 "$WEB/system"           'System status'
 check "GET /departments"      200 "$WEB/departments"      'Departments'
@@ -144,6 +163,7 @@ check "GET /api/system/info"  200 "$WEB/api/system/info"  '"name":"NEXUS AI"'
 check "GET /api/departments"  200 "$WEB/api/departments"  '"key":"knowledge"'
 check "GET /api/storage/overview" 200 "$WEB/api/storage/overview" '"writes_enabled":true'
 check "GET /api/storage/dashboard" 200 "$WEB/api/storage/dashboard" '"activity":\['
+check "GET /api/storage/backups" 200 "$WEB/api/storage/backups" '"configured":true'
 check "GET /api/ai/settings"  200 "$WEB/api/ai/settings"  '"provider":"nvidia"'
 check "GET /api/conversations" 200 "$WEB/api/conversations" '^\['
 check "GET /api/tasks"        200 "$WEB/api/tasks"        '^\['

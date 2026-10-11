@@ -33,6 +33,10 @@ function bytes(value: number): string {
   return `${amount >= 10 ? amount.toFixed(0) : amount.toFixed(1)} ${unit}`;
 }
 
+function when(value: string): string {
+  return new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" }).format(new Date(value));
+}
+
 function DataCenterStatus() {
   const overview = useStorageStore((s) => s.overview);
   const load = useStorageStore((s) => s.load);
@@ -87,12 +91,17 @@ function DataCenterStatus() {
         <Link href="/vault/dashboard" className="rounded-xl px-3 py-2.5 text-nx-muted ring-1 ring-nx-line transition hover:bg-white/5 hover:text-nx-text">
           Storage dashboard
         </Link>
+        <Link href="/vault/protection" className="col-span-2 rounded-xl px-3 py-2.5 text-nx-muted ring-1 ring-nx-line transition hover:bg-white/5 hover:text-nx-text">
+          Backup and integrity
+        </Link>
       </div>
       <div className="mt-3 rounded-xl bg-white/[0.03] px-4 py-3 text-xs leading-5 text-nx-muted ring-1 ring-nx-line">
         <p>{overview.writes_enabled ? "Storage operations are available through the owner API." : "Storage operations are read-only."}</p>
         <p>{overview.read_only_workspace_count ? `${overview.read_only_workspace_count} workspace${overview.read_only_workspace_count === 1 ? " is" : "s are"} currently read-only.` : "All workspaces currently accept authorized writes."}</p>
         <p>{overview.last_event_at ? "Storage activity is recorded in the audit log." : "No storage activity has been recorded yet."}</p>
-        <p>{overview.backup_configured ? "A backup destination is configured; restore verification is still pending." : "No backup destination is configured."}</p>
+        <p data-testid="storage-backup-state">{!overview.backup_configured ? "No backup destination is configured." : overview.last_backup_at ? `Last backup ${when(overview.last_backup_at)}; ${overview.backup_snapshot_count} kept.` : "A backup destination is configured, but no backup has been taken yet."}</p>
+        <p>{overview.integrity_checked_at ? `Integrity last checked ${when(overview.integrity_checked_at)}.` : "Stored files have not been checked for integrity yet."}</p>
+        {overview.unavailable_version_count > 0 && <p className="text-nx-warn">⚠ {overview.unavailable_version_count} stored version{overview.unavailable_version_count === 1 ? " is" : "s are"} missing or failed validation.</p>}
       </div>
     </section>
   );

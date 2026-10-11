@@ -111,9 +111,11 @@ class Settings(BaseSettings):
         default=DEFAULT_STORAGE_EXTENSIONS.copy(),
         alias="NEXUS_STORAGE_ALLOWED_EXTENSIONS",
     )
-    # Backups are deliberately disabled until DC-8 implements and verifies
-    # restore. When configured, this must be a separate tree from storage_root.
+    # Backups are off until a destination is configured. It must be a separate tree
+    # from storage_root; only a different drive protects against losing the drive.
     storage_backup_root: Path | None = Field(default=None, alias="NEXUS_STORAGE_BACKUP_ROOT")
+    # How many snapshots are kept; older ones are removed after a successful backup.
+    storage_backup_keep: int = Field(default=7, alias="NEXUS_STORAGE_BACKUP_KEEP", ge=1, le=365)
 
     # --- Secrets (never logged, never returned by the API) --------------------
     # Master key for encrypting credentials stored server-side (used from Stage 9).

@@ -18,7 +18,9 @@ screen is simulated.
 > writes the files of their role, and the stored app can be downloaded, run here in a
 > sandbox, or changed. See [`docs/STAGES.md`](docs/STAGES.md).
 
-> **Data Center feature track:** DC-7 is complete and awaiting approval for DC-8. The
+> **Data Center feature track:** DC-8, the last stage, is complete: verified backups,
+> repair and recovery from them, integrity checks, sharing between departments and a
+> Protection screen. The
 > searchable, enterable Data Center room now appears beside Engineering with twelve
 > racks and a live storage overview. The local Vault backend now provides validated,
 > quota-limited file APIs plus dynamic department workspaces, actor-aware grants and

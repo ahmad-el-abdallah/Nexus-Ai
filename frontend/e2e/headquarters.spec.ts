@@ -49,6 +49,8 @@ test.describe("3D headquarters", () => {
     await expect(panel.getByRole("link", { name: /Open Digital Vault explorer/ })).toHaveAttribute("href", "/vault");
     await expect(panel.getByRole("link", { name: "Engineering projects" })).toHaveAttribute("href", "/vault/projects");
     await expect(panel.getByRole("link", { name: "Storage dashboard" })).toHaveAttribute("href", "/vault/dashboard");
+    await expect(panel.getByRole("link", { name: "Backup and integrity" })).toHaveAttribute("href", "/vault/protection");
+    await expect(panel.getByTestId("storage-backup-state")).toContainText(/backup/i);
     await settle(page);
     await page.screenshot({ path: "../.artifacts/e2e/data-center-dc4.png" });
   });

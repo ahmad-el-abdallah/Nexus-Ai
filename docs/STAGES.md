@@ -25,8 +25,9 @@ reported, and the next stage starts only after the owner's explicit approval.
 ### Separate Data Center feature track
 
 The Data Center & Digital Vault is tracked as **DC-1 through DC-8** in
-[`DATA_CENTER.md`](DATA_CENTER.md). DC-7's version history, comparison, restore, engineering
-project viewer and storage dashboard are complete and awaiting approval for DC-8.
+[`DATA_CENTER.md`](DATA_CENTER.md). All eight are complete: DC-8 added verified backups,
+repair and recovery from them, integrity checks with safe cleanup, sharing between
+departments and the Protection screen.
 This feature track does not
 change the global status above: Stage 10 remains complete and Stage 11 has not been
 approved.

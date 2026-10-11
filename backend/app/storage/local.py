@@ -149,10 +149,34 @@ class LocalBlobStore:
         return descriptor
 
     async def inventory(self) -> tuple[set[str], int]:
+        keys, unsafe = await asyncio.to_thread(self._inventory_sync)
+        return set(keys), unsafe
+
+    async def inventory_details(self) -> tuple[dict[str, tuple[int, float]], int]:
+        """Every safe object key with its size and modification time, and the unsafe count."""
         return await asyncio.to_thread(self._inventory_sync)
 
-    def _inventory_sync(self) -> tuple[set[str], int]:
-        keys: set[str] = set()
+    async def clear_temporary(self, before: float) -> int:
+        """Remove interrupted upload fragments last written before the given time."""
+
+        def clear() -> int:
+            removed = 0
+            if not self.temporary.is_dir():
+                return removed
+            for item in self.temporary.iterdir():
+                try:
+                    info = item.lstat()
+                    if stat.S_ISREG(info.st_mode) and info.st_mtime < before:
+                        item.unlink()
+                        removed += 1
+                except OSError:
+                    continue
+            return removed
+
+        return await asyncio.to_thread(clear)
+
+    def _inventory_sync(self) -> tuple[dict[str, tuple[int, float]], int]:
+        keys: dict[str, tuple[int, float]] = {}
         unsafe = 0
         if not self.objects.exists():
             return keys, unsafe
@@ -171,6 +195,10 @@ class LocalBlobStore:
                 key = candidate.relative_to(self.root).as_posix()
                 if candidate.is_symlink() or not KEY_PATTERN.fullmatch(key):
                     unsafe += 1
-                else:
-                    keys.add(key)
+                    continue
+                try:
+                    info = candidate.stat()
+                except OSError:
+                    continue  # removed while the inventory was being taken
+                keys[key] = (info.st_size, info.st_mtime)
         return keys, unsafe

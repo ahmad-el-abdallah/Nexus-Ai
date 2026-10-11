@@ -6,6 +6,7 @@ import asyncio
 import mimetypes
 import re
 import tempfile
+import time
 import zipfile
 from collections.abc import AsyncIterator, Awaitable, Callable
 from dataclasses import dataclass
@@ -51,6 +52,12 @@ from app.storage.names import StorageNameError, logical_name, logical_path, logi
 Reader = Callable[[int], Awaitable[bytes]]
 UNSET = object()
 MIME_PATTERN = re.compile(r"[a-zA-Z0-9][a-zA-Z0-9.+-]*/[a-zA-Z0-9][a-zA-Z0-9.+-]*\Z")
+RECONCILE_BATCH = 500
+VIEW_BATCH = 500
+MAX_DAMAGED_LISTED = 200
+MAX_GRANTS_LISTED = 500
+# An unreferenced object younger than this may belong to an upload still in progress.
+ORPHAN_GRACE_SECONDS = 3600
 
 
 @dataclass(frozen=True)
@@ -99,6 +106,8 @@ class StorageActor:
 OWNER_ACTOR = StorageActor(kind="owner", name="Owner")
 SYSTEM_ACTOR = StorageActor(kind="system", name="NEXUS storage service")
 PERMISSION_RANK = {"read": 1, "write": 2, "manage": 3}
+# Stored bytes that count against a quota: present content, valid or not.
+USAGE_STATUSES = (StorageVersionStatus.AVAILABLE.value, StorageVersionStatus.QUARANTINED.value)
 
 # Link relations written only by the artifact registrar. A file that carries one mirrors
 # a real source record, so nobody else may create such a link or rewrite that history.
@@ -174,11 +183,20 @@ class VaultService:
     ) -> list[dict[str, Any]]:
         await self.sync_workspaces(session)
         rows = list(await session.scalars(select(StorageWorkspace).order_by(StorageWorkspace.id)))
+        usage = {
+            workspace_id: int(used)
+            for workspace_id, used in await session.execute(
+                select(StorageEntry.workspace_id, func.sum(StorageVersion.size_bytes))
+                .join(StorageEntry, StorageEntry.id == StorageVersion.entry_id)
+                .where(StorageVersion.status.in_(USAGE_STATUSES))
+                .group_by(StorageEntry.workspace_id)
+            )
+        }
         result: list[dict[str, Any]] = []
         for workspace in rows:
             if not await self._allowed(session, actor, workspace, "read"):
                 continue
-            used = await self._usage(session, workspace.id)
+            used = usage.get(workspace.id, 0)
             result.append(
                 {
                     "id": workspace.id,
@@ -268,11 +286,15 @@ class VaultService:
             entry = await self._entry(session, entry_id)
             if entry.workspace_id != workspace_id:
                 raise VaultError(422, "The grant item must belong to this workspace.")
+            if entry.trashed_at is not None:
+                raise VaultError(409, "Restore this item before sharing it.")
         if grantee_kind == StorageGranteeKind.EMPLOYEE.value:
             if await session.get(Employee, grantee_id) is None:
                 raise VaultError(422, "The grantee employee does not exist.")
         elif await session.get(Department, grantee_id) is None:
             raise VaultError(422, "The grantee department does not exist.")
+        elif grantee_id == workspace.department_key and permission != "manage":
+            raise VaultError(422, "That department already has this access to its own workspace.")
         if expires_at is not None:
             if expires_at.tzinfo is None or expires_at.utcoffset() is None:
                 raise VaultError(422, "Grant expiry must include a timezone.")
@@ -344,6 +366,94 @@ class VaultService:
             )
             await session.commit()
         return self._grant_view(grant)
+
+    async def active_grants(
+        self,
+        session: AsyncSession,
+        *,
+        entry_id: str | None = None,
+        actor: StorageActor = OWNER_ACTOR,
+    ) -> list[dict[str, Any]]:
+        """Live grants the actor may manage, with the names needed to show them.
+
+        With an item, only the grants that reach it are returned: its own, those on a
+        folder above it, and those on its whole workspace."""
+        now = datetime.now(UTC)
+        statement = select(StorageGrant).where(
+            StorageGrant.revoked_at.is_(None),
+            (StorageGrant.expires_at.is_(None) | (StorageGrant.expires_at > now)),
+        )
+        target: StorageEntry | None = None
+        if entry_id is not None:
+            target = await self._entry(session, entry_id)
+            await self._require(
+                session, actor, await self._workspace(session, target.workspace_id), "manage"
+            )
+            statement = statement.where(StorageGrant.workspace_id == target.workspace_id)
+        grants = list(
+            await session.scalars(
+                statement.order_by(StorageGrant.created_at.desc(), StorageGrant.id).limit(
+                    MAX_GRANTS_LISTED
+                )
+            )
+        )
+        manageable: dict[str, bool] = {}
+        for workspace_id in {grant.workspace_id for grant in grants}:
+            workspace = await self._workspace(session, workspace_id)
+            manageable[workspace_id] = await self._allowed(session, actor, workspace, "manage")
+        entries = {
+            row.id: row
+            for row in await session.scalars(
+                select(StorageEntry).where(
+                    StorageEntry.id.in_({grant.entry_id for grant in grants if grant.entry_id})
+                )
+            )
+        }
+        employees = dict(
+            (
+                await session.execute(
+                    select(Employee.id, Employee.name).where(
+                        Employee.id.in_(
+                            {
+                                grant.grantee_id
+                                for grant in grants
+                                if grant.grantee_kind == StorageGranteeKind.EMPLOYEE.value
+                            }
+                        )
+                    )
+                )
+            ).all()
+        )
+        departments = dict((await session.execute(select(Department.key, Department.name))).all())
+        result: list[dict[str, Any]] = []
+        for grant in grants:
+            if not manageable[grant.workspace_id]:
+                continue
+            item = entries.get(grant.entry_id) if grant.entry_id else None
+            reaches_target = (
+                target is None
+                or item is None
+                or item.id == target.id
+                or target.path.startswith(f"{item.path}/")
+            )
+            if not reaches_target:
+                continue
+            names = (
+                employees
+                if grant.grantee_kind == StorageGranteeKind.EMPLOYEE.value
+                else departments
+            )
+            result.append(
+                {
+                    **self._grant_view(grant),
+                    "grantee_name": names.get(grant.grantee_id),
+                    "entry_name": item.name if item else None,
+                    "entry_path": item.path if item else None,
+                    "entry_kind": item.kind if item else None,
+                    "inherited": target is not None and (item is None or item.id != target.id),
+                }
+            )
+        return result
 
     async def links(
         self,
@@ -434,6 +544,7 @@ class VaultService:
         descending: bool,
         offset: int,
         limit: int,
+        shared: bool = False,
         actor: StorageActor = OWNER_ACTOR,
     ) -> dict[str, Any]:
         """Search safe metadata with bounded, incremental results."""
@@ -449,6 +560,20 @@ class VaultService:
         )
         if kind:
             conditions.append(StorageEntry.kind == kind)
+        if shared:
+            # Items shared by name; a grant on a whole workspace is not an item.
+            conditions.append(
+                StorageEntry.id.in_(
+                    select(StorageGrant.entry_id).where(
+                        StorageGrant.entry_id.is_not(None),
+                        StorageGrant.revoked_at.is_(None),
+                        (
+                            StorageGrant.expires_at.is_(None)
+                            | (StorageGrant.expires_at > datetime.now(UTC))
+                        ),
+                    )
+                )
+            )
         if tag:
             conditions.append(
                 StorageEntry.id.in_(
@@ -514,7 +639,7 @@ class VaultService:
             )
         )
         return {
-            "items": [await self.entry_view(session, row) for row in rows],
+            "items": await self.entry_views(session, rows),
             "total": total,
             "offset": offset,
             "limit": limit,
@@ -887,7 +1012,7 @@ class VaultService:
                 StorageEntry.parent_id == parent_id, StorageEntry.trashed_at.is_(None)
             )
         rows = list(await session.scalars(statement.order_by(StorageEntry.kind, StorageEntry.name)))
-        return [await self.entry_view(session, row) for row in rows]
+        return await self.entry_views(session, rows)
 
     async def create_folder(
         self,
@@ -1519,66 +1644,194 @@ class VaultService:
         return await self.entry_view(session, entry)
 
     async def reconcile(self, session: AsyncSession) -> dict[str, int]:
-        versions = list(await session.scalars(select(StorageVersion)))
-        entries = {row.id: row for row in await session.scalars(select(StorageEntry))}
-        missing = corrupt = recovered = 0
-        expected = {version.storage_key for version in versions}
-        for version in versions:
-            status = StorageVersionStatus.AVAILABLE.value
-            try:
-                size, digest = await self.blobs.checksum(version.storage_key)
-                if size != version.size_bytes or digest != version.sha256:
-                    status = StorageVersionStatus.QUARANTINED.value
-                    corrupt += 1
-            except BlobMissingError:
-                status = StorageVersionStatus.MISSING.value
-                missing += 1
-            except BlobUnsafeError:
-                status = StorageVersionStatus.QUARANTINED.value
-                corrupt += 1
-            if version.status != status and status == StorageVersionStatus.AVAILABLE.value:
-                recovered += 1
-            version.status = status
-            entry = entries.get(version.entry_id)
-            if entry and entry.current_version_number == version.number:
-                entry.status = status
-                entry.last_error = (
-                    None
-                    if status == StorageVersionStatus.AVAILABLE.value
-                    else (
-                        "Stored content is missing."
-                        if status == StorageVersionStatus.MISSING.value
-                        else "Stored content failed integrity validation."
+        """Check every stored version against its bytes, a bounded batch at a time."""
+        checked = missing = corrupt = recovered = 0
+        last_id = ""
+        while True:
+            versions = list(
+                await session.scalars(
+                    select(StorageVersion)
+                    .where(StorageVersion.id > last_id)
+                    .order_by(StorageVersion.id)
+                    .limit(RECONCILE_BATCH)
+                )
+            )
+            if not versions:
+                break
+            last_id = versions[-1].id
+            entries = {
+                row.id: row
+                for row in await session.scalars(
+                    select(StorageEntry).where(
+                        StorageEntry.id.in_({version.entry_id for version in versions})
                     )
                 )
+            }
+            for version in versions:
+                checked += 1
+                status = StorageVersionStatus.AVAILABLE.value
+                try:
+                    size, digest = await self.blobs.checksum(version.storage_key)
+                    if size != version.size_bytes or digest != version.sha256:
+                        status = StorageVersionStatus.QUARANTINED.value
+                        corrupt += 1
+                except BlobMissingError:
+                    status = StorageVersionStatus.MISSING.value
+                    missing += 1
+                except BlobUnsafeError:
+                    status = StorageVersionStatus.QUARANTINED.value
+                    corrupt += 1
+                if version.status != status and status == StorageVersionStatus.AVAILABLE.value:
+                    recovered += 1
+                version.status = status
+                entry = entries.get(version.entry_id)
+                if entry and entry.current_version_number == version.number:
+                    entry.status = status
+                    entry.last_error = (
+                        None
+                        if status == StorageVersionStatus.AVAILABLE.value
+                        else (
+                            "Stored content is missing."
+                            if status == StorageVersionStatus.MISSING.value
+                            else "Stored content failed integrity validation."
+                        )
+                    )
+            await session.commit()
+        # The inventory is taken before the keys are read, so a file committed in
+        # between is not mistaken for an orphan.
         actual, unsafe = await self.blobs.inventory()
-        orphaned = len(actual - expected)
+        expected = set(await session.scalars(select(StorageVersion.storage_key)))
+        report = {
+            "checked": checked,
+            "missing": missing,
+            "corrupt": corrupt,
+            "recovered": recovered,
+            "orphaned": len(actual - expected),
+            "unsafe": unsafe,
+        }
         session.add(
             StorageEvent(
-                level="warn" if missing or corrupt or orphaned or unsafe else "info",
+                level="warn" if missing or corrupt or report["orphaned"] or unsafe else "info",
                 kind="storage_reconciled",
                 actor_kind="system",
                 actor_name="NEXUS storage service",
                 text="Validated stored file metadata against local blobs.",
-                details={
-                    "checked": len(versions),
-                    "missing": missing,
-                    "corrupt": corrupt,
-                    "recovered": recovered,
-                    "orphaned": orphaned,
-                    "unsafe": unsafe,
-                },
+                details=dict(report),
             )
         )
         await session.commit()
+        return report
+
+    async def integrity(
+        self, session: AsyncSession, *, actor: StorageActor = OWNER_ACTOR
+    ) -> dict[str, Any]:
+        """The last integrity check and the versions currently known to be damaged."""
+        self._owner_only(actor)
+        last = await session.scalar(
+            select(StorageEvent)
+            .where(StorageEvent.kind == "storage_reconciled")
+            .order_by(StorageEvent.created_at.desc(), StorageEvent.id.desc())
+            .limit(1)
+        )
+        damaged = StorageVersion.status != StorageVersionStatus.AVAILABLE.value
+        total = int(
+            await session.scalar(select(func.count()).select_from(StorageVersion).where(damaged))
+            or 0
+        )
+        rows = (
+            await session.execute(
+                select(StorageVersion, StorageEntry)
+                .join(StorageEntry, StorageEntry.id == StorageVersion.entry_id)
+                .where(damaged)
+                .order_by(StorageEntry.workspace_id, StorageEntry.path, StorageVersion.number)
+                .limit(MAX_DAMAGED_LISTED)
+            )
+        ).all()
         return {
-            "checked": len(versions),
-            "missing": missing,
-            "corrupt": corrupt,
-            "recovered": recovered,
-            "orphaned": orphaned,
+            "last_check": (
+                {
+                    "at": last.created_at,
+                    **{
+                        key: int(last.details.get(key, 0))
+                        for key in (
+                            "checked",
+                            "missing",
+                            "corrupt",
+                            "recovered",
+                            "orphaned",
+                            "unsafe",
+                        )
+                    },
+                }
+                if last
+                else None
+            ),
+            "damaged_total": total,
+            "damaged": [
+                {
+                    "entry_id": entry.id,
+                    "workspace_id": entry.workspace_id,
+                    "name": entry.name,
+                    "path": entry.path,
+                    "version": version.number,
+                    "is_current": version.number == entry.current_version_number,
+                    "status": version.status,
+                    "size_bytes": version.size_bytes,
+                }
+                for version, entry in rows
+            ],
+        }
+
+    async def cleanup(
+        self, session: AsyncSession, *, actor: StorageActor = OWNER_ACTOR
+    ) -> dict[str, int]:
+        """Remove stored objects no file refers to, and interrupted upload fragments.
+
+        Anything written within the grace period is left alone: an upload stores its
+        bytes before its metadata, so a very new object may simply not be committed yet."""
+        self._owner_only(actor)
+        cutoff = time.time() - ORPHAN_GRACE_SECONDS
+        objects, unsafe = await self.blobs.inventory_details()
+        referenced = set(await session.scalars(select(StorageVersion.storage_key)))
+        removed = freed = kept_recent = 0
+        for key, (size, modified) in objects.items():
+            if key in referenced:
+                continue
+            if modified >= cutoff:
+                kept_recent += 1
+                continue
+            still_unused = await session.scalar(
+                select(StorageVersion.id).where(StorageVersion.storage_key == key)
+            )
+            if still_unused is not None:
+                continue
+            await self.blobs.remove(key)
+            removed += 1
+            freed += size
+        report = {
+            "removed_objects": removed,
+            "removed_bytes": freed,
+            "removed_temporary": await self.blobs.clear_temporary(cutoff),
+            "kept_recent": kept_recent,
             "unsafe": unsafe,
         }
+        session.add(
+            StorageEvent(
+                level="warn" if unsafe else "info",
+                kind="storage_cleaned",
+                actor_kind=actor.kind,
+                actor_name=actor.name,
+                text=f"Removed {removed} stored objects that no file referred to.",
+                details=dict(report),
+            )
+        )
+        await session.commit()
+        return report
+
+    @staticmethod
+    def _owner_only(actor: StorageActor) -> None:
+        if actor.kind not in {"owner", "system"}:
+            raise VaultError(403, "Only the owner can run storage maintenance.")
 
     async def entry_view(self, session: AsyncSession, entry: StorageEntry) -> dict[str, Any]:
         version = await self._current_version(session, entry)
@@ -1589,6 +1842,41 @@ class VaultService:
                 .order_by(StorageTag.tag)
             )
         )
+        return self._view(entry, version, tags)
+
+    async def entry_views(
+        self, session: AsyncSession, entries: list[StorageEntry]
+    ) -> list[dict[str, Any]]:
+        """The same views as `entry_view`, read with two queries per batch instead of
+        two per item."""
+        versions: dict[str, StorageVersion] = {}
+        tags: dict[str, list[str]] = {}
+        ids = [entry.id for entry in entries]
+        for start in range(0, len(ids), VIEW_BATCH):
+            batch = ids[start : start + VIEW_BATCH]
+            for version in await session.scalars(
+                select(StorageVersion)
+                .join(
+                    StorageEntry,
+                    (StorageEntry.id == StorageVersion.entry_id)
+                    & (StorageEntry.current_version_number == StorageVersion.number),
+                )
+                .where(StorageEntry.id.in_(batch))
+            ):
+                versions[version.entry_id] = version
+            for entry_id, tag in await session.execute(
+                select(StorageTag.entry_id, StorageTag.tag)
+                .where(StorageTag.entry_id.in_(batch))
+                .order_by(StorageTag.tag)
+            ):
+                tags.setdefault(entry_id, []).append(tag)
+        return [
+            self._view(entry, versions.get(entry.id), tags.get(entry.id, [])) for entry in entries
+        ]
+
+    def _view(
+        self, entry: StorageEntry, version: StorageVersion | None, tags: list[str]
+    ) -> dict[str, Any]:
         return {
             "id": entry.id,
             "workspace_id": entry.workspace_id,
@@ -1860,12 +2148,7 @@ class VaultService:
             .join(StorageEntry, StorageEntry.id == StorageVersion.entry_id)
             .where(
                 StorageEntry.workspace_id == workspace_id,
-                StorageVersion.status.in_(
-                    [
-                        StorageVersionStatus.AVAILABLE.value,
-                        StorageVersionStatus.QUARANTINED.value,
-                    ]
-                ),
+                StorageVersion.status.in_(USAGE_STATUSES),
             )
         )
         return int(value or 0)
@@ -1896,9 +2179,16 @@ class VaultService:
         prefix = f"{entry.path}/"
         rows = list(
             await session.scalars(
-                select(StorageEntry).where(StorageEntry.workspace_id == entry.workspace_id)
+                select(StorageEntry).where(
+                    StorageEntry.workspace_id == entry.workspace_id,
+                    or_(
+                        StorageEntry.id == entry.id,
+                        StorageEntry.path.startswith(prefix, autoescape=True),
+                    ),
+                )
             )
         )
+        # LIKE may ignore letter case; the exact comparison decides.
         return [row for row in rows if row.id == entry.id or row.path.startswith(prefix)]
 
     async def _commit_conflict(self, session: AsyncSession, detail: str) -> None:

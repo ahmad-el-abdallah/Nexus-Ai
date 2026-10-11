@@ -6,69 +6,53 @@ The durable design and completed-stage reports remain in `DATA_CENTER.md`.
 ## Approval boundary
 
 - The global product is still **Stage 10 of 16**. Stage 11 is not approved.
-- The separate Data Center track is **DC-1 through DC-8**.
-- DC-1 through DC-7 are committed. DC-7 is the commit
-  `Data Center DC-7: version history, project viewer and dashboard`, pushed to `origin`
-  on the owner's explicit request.
-- DC-7 was committed before its last gates finished: the smoke test and the clean-copy
-  check were **not run**, and the full browser rerun was unfinished (see "DC-7
-  verification" in `DATA_CENTER.md`). Run `scripts/smoke.sh` and the full Playwright
-  suite before building on it.
-- **DC-8 is not approved.** Do not begin it without a new, explicit owner approval.
-- Never push unless the owner asks for that push.
+- The separate Data Center track **DC-1 through DC-8 is complete**. There is no DC-9;
+  further Data Center work needs a new, explicit request from the owner.
+- DC-1 to DC-8 are on `main` and pushed. DC-8 is one commit,
+  `Data Center DC-8: backup, recovery, integrity and sharing`. It was built on the
+  branch `data-center-dc8` and merged at the owner's request; that branch is deleted.
+- The owner works on `main` together with someone else: start new stage-sized work on
+  its own branch, and merge or push only when the owner asks.
 
-## What DC-7 implements
+## What DC-8 implements
 
-- Per-version download and preview (`?version=n`), owner upload of a new version, and
-  restore that appends a verified copy; history is never rewritten.
-- Files mirrored by `ArtifactRegistrar` are `source_managed`: readable, comparable and
-  downloadable, but manual versions and restores are refused (409).
-- The provenance relations that mark a file as a source record's output are reserved
-  for the registrar (`managed=True` on `VaultService.link_entry`); everyone else gets 422.
-- `backend/app/storage/insights.py` (`VaultInsights`) is read-only: bounded line
-  comparison, engineering projects and the dashboard. It writes nothing and goes through
-  the Vault service's permission and integrity checks.
-- Frontend: `VersionHistory` and `DiffView` in the Vault inspector, `/vault/projects`
-  (`ProjectsPage`), `/vault/dashboard` (`VaultDashboard`), a shared `VaultTabs` bar and
-  two links in the Data Center room panel.
+- `backend/app/storage/backup.py` — `VaultBackup` and `BackupStore`: snapshots into
+  `NEXUS_STORAGE_BACKUP_ROOT` (content-addressed objects plus one checksummed manifest
+  per snapshot), verification, repair of missing or corrupt versions, recovery of a
+  permanently deleted file as a new file, and retention (`NEXUS_STORAGE_BACKUP_KEEP`).
+- `VaultService`: batched `reconcile`, `integrity`, confirmed `cleanup` with a one-hour
+  grace period, `active_grants`, `search(shared=True)`, batched `entry_views`.
+- Frontend: `/vault/protection` (`ProtectionPage`), `SharePanel` in the Vault inspector,
+  a **Shared** view, and backup/integrity lines in the Data Center room panel.
+- Tests: `backend/tests/test_storage_dc8.py`, `frontend/src/components/vault/dc8.test.tsx`,
+  `frontend/e2e/vault-dc8.spec.ts`, one more check in `mobile.spec.ts` and new smoke
+  checks.
 
 ## Things the next agent should know
 
-- An "engineering project" is the existing `App` with its `AppVersion` rows. There is
-  still no canonical Project model; it belongs to global Stage 11. Do not add a
-  competing project table.
-- Each app version's files are separate Vault entries under
-  `AI Artifacts/Apps/<app>/Version n/`, so comparing two app versions compares two
-  entries, while comparing a file's own history compares two versions of one entry.
-  `GET /api/storage/diff` handles both.
-- Changes between app versions are computed from the real `AppFile` contents against
-  `AppVersion.base_version`, not from Vault checksums, so they are correct even when a
-  stored copy is missing.
-- The dashboard buckets days by the caller's UTC offset (`utc_offset_minutes`) and
-  leaves `artifact_linked` / `entry_updated` out of its short recent-activity list; the
-  per-day counts and each file's own history still include them.
-- Nothing in DC-7 needed a migration. The single Alembic head is still
+- The truth about backups is the backup folder, not the database: snapshots are listed
+  by reading manifests, and only verification results are stored as `backup_verified`
+  events. Nothing in DC-8 needed a migration; the single Alembic head is still
   `0013_storage_foundation`.
+- Snapshot ids carry a microsecond timestamp (`bkp_<YYYYMMDDTHHMMSSffffff>Z_<8 hex>`),
+  so sorting the names is sorting by time. Retention relies on this.
+- `VaultBackup` must stay a single instance per app (`app.state.backup`): its lock is
+  what makes backup, verify, repair and recover exclusive.
+- Repair repoints a version's `storage_key` to a freshly written object. The old corrupt
+  object becomes unreferenced and is removed by `cleanup` once it is an hour old.
+- Recovery deliberately creates a new entry. The deleted-files list reports
+  `present_at` when identical content already exists in that workspace.
+- The browser tests give the backend `/tmp/nexus-e2e-backups-<port>` and empty it before
+  each run. `vault-dc8.spec.ts` deletes a stored object from the test storage folder on
+  disk to simulate a failing drive.
+- A backup does not include the application database. Protecting chats, tasks and
+  settings is a separate, unrequested piece of work.
 
-## Final DC-7 verification
+## Verification
 
-All of this ran on the final DC-7 tree in isolated WSL copies with temporary databases,
-storage roots and fake providers. Exact counts are in `DATA_CENTER.md`.
-
-- Backend Ruff, the full backend suite, frontend ESLint, TypeScript, the unit suite and
-  the production build pass.
-- The full Playwright suite passes except the pre-existing suspended-walk test in
-  `employees.spec.ts` (the employee stays `walking` instead of reaching `away` under
-  software GL). It is unrelated to the Data Center and remains open.
-- Screenshots reviewed: `.artifacts/e2e/digital-vault-dc7-versions.png`,
-  `-projects.png`, `-dashboard.png` and the two `-mobile.png` files.
-- `git diff --check`, the secret/private-path scan and a clean copy of the staged tree
-  (fresh setup, migrations and smoke test) pass.
-
-## Remaining work
-
-None for DC-7. The next step is the owner's decision about DC-8 (backup/recovery,
-integrity, permission boundaries, performance and final polish).
+Exact counts are under "DC-8 verification" in `DATA_CENTER.md`. The pre-existing
+suspended-walk test in `employees.spec.ts` still fails under software GL (the employee
+stays `walking` instead of reaching `away`); it is unrelated to the Data Center.
 
 Use `/root/nexus-ai-dev` or another isolated WSL copy for Python/backend execution. The
 owner's `/root/nexus-ai` data and real NVIDIA credentials are out of scope.

@@ -4,11 +4,13 @@ This document is the architecture and delivery tracker for the **Data Center & D
 Vault** feature. It is a separate, approval-gated feature track named **DC-1** through
 **DC-8** so that it cannot be confused with NEXUS AI's existing 16-stage roadmap.
 
-> **Current status:** DC-7 was committed on 2026-10-11 and is awaiting approval for
-> DC-8. The global product remains at **Stage 10 of 16**, with Stage 11 unapproved. The
-> 3D room, live metadata projection, owner file APIs, responsive Vault browser, automatic
-> registration of real employee artifacts, version history with comparison and restore,
-> the engineering project viewer and the storage dashboard are operational.
+> **Current status:** DC-8, the last stage of this track, was completed on 2026-10-11.
+> The global product remains at **Stage 10 of 16**, with
+> Stage 11 unapproved. The 3D room, live metadata projection, owner file APIs, responsive
+> Vault browser, automatic registration of real employee artifacts, version history with
+> comparison and restore, the engineering project viewer, the storage dashboard, verified
+> backups with repair and recovery, integrity maintenance and browser sharing are
+> operational.
 
 ## Product contract
 
@@ -43,8 +45,8 @@ reported, then stop for the owner's approval before the next one begins.
 | DC-4 | Dynamic department workspaces, quotas, permissions and task/app associations | ✅ Complete |
 | DC-5 | Professional file explorer, search, previews, metadata and ZIP export | ✅ Complete |
 | DC-6 | Automatic registration of real AI employee artifacts | ✅ Complete |
-| DC-7 | Engineering project viewer, immutable versions, restore, diffs and dashboards | ✅ Complete — awaiting approval for DC-8 |
-| DC-8 | Backup/recovery, integrity, permission boundaries, performance and final polish | ⏳ Not started |
+| DC-7 | Engineering project viewer, immutable versions, restore, diffs and dashboards | ✅ Complete |
+| DC-8 | Backup/recovery, integrity, permission boundaries, performance and final polish | ✅ Complete |
 
 DC stages do not advance `CURRENT_STAGE` in `frontend/src/lib/stages.ts` and do not
 approve global Stage 11. If the owner later replaces or reschedules the 16-stage plan,
@@ -103,6 +105,7 @@ bytes so configuration is unambiguous.
 | `NEXUS_STORAGE_DEPARTMENT_QUOTA_BYTES` | `10737418240` (10 GiB) | Default logical quota per department; it does not reserve disk space. |
 | `NEXUS_STORAGE_ALLOWED_EXTENSIONS` | The documented initial file types | Comma-separated extension policy. MIME and extension are advisory metadata; neither authorizes execution. |
 | `NEXUS_STORAGE_BACKUP_ROOT` | unset | Optional local backup destination. Unset means backups are not configured. A folder on the same drive is not described as disaster recovery. |
+| `NEXUS_STORAGE_BACKUP_KEEP` | `7` | Number of backups kept (1–365). Older ones are removed after a successful backup. |
 
 `NEXUS_STORAGE_ROOT` and `NEXUS_STORAGE_BACKUP_ROOT` must be distinct and must not be
 nested inside one another. A maximum file size cannot exceed the department quota.
@@ -554,18 +557,110 @@ installation and real provider credentials were not used.
 | Backend Ruff; frontend ESLint and TypeScript | **PASS** |
 | Frontend unit suite | **PASS** — 199 tests |
 | Next.js production build | **PASS** — 24 routes generated |
-| Isolated full-stack smoke test | **NOT RUN** before the commit — the owner asked for an immediate commit and push. The new smoke checks (new version, comparison, restore, dashboard and project routes) are written but unexecuted. |
-| Clean staged-tree setup, migrations and smoke test | **NOT RUN** before the commit, for the same reason |
+| Clean-copy setup, migrations and full-stack smoke test | **PASS** — run after the commit, on a fresh copy of the committed tree with its own database, storage root and ports: all 14 migrations, then every smoke check including new version, comparison, restore, dashboard and project routes. The owner had asked for the commit and push before this check was run. |
 | Focused DC-7 browser workflows | **PASS** — version upload/compare/restore; a real two-version app in the project viewer; dashboard totals equal to the API |
 | Mobile browser check | **PASS** — dashboard and project viewer without horizontal overflow |
 | Visual inspection | **PASS** — versions, projects and dashboard screenshots reviewed on desktop and phone |
-| Full Playwright browser suite | **PARTIAL** — the last complete run had 58 passed and 2 failed: the pre-existing suspended-walk test (the employee remained `walking` instead of reaching `away` under software GL) and the DC-5 Vault workflow, whose `Download` link locator had become ambiguous next to the new `Download v1` link. That locator was then made exact; the rerun on the final tree had not finished at commit time (31 passed, only the suspended-walk test failed so far). |
+| Full Playwright browser suite | **PARTIAL** — 59 passed; the same pre-existing suspended-walk test failed under software GL because the employee remained `walking` instead of reaching `away`. Every Vault, Data Center, mobile and no-WebGL test passed. This run was on the committed code and finished after the commit. An earlier run had also failed the DC-5 Vault workflow, whose `Download` link locator had become ambiguous next to the new `Download v1` link; that locator was made exact. |
+
+## DC-8 implementation
+
+- **Backups** (`backend/app/storage/backup.py`, `VaultBackup`). A snapshot copies every
+  stored version into `NEXUS_STORAGE_BACKUP_ROOT`, named by its SHA-256 so unchanged
+  content is stored once across snapshots. Each copy is published only if it matches the
+  recorded size and checksum. The snapshot's manifest holds the Vault's workspaces,
+  folders, files, versions, tags and provenance links, and has a checksum of its own. A
+  version whose bytes could not be read is listed as not saved and the snapshot is marked
+  **partial**; it is never reported as complete. Storage keys and server paths are not in
+  the manifest or in any response.
+- **Verification.** Verifying a snapshot re-reads every object it refers to. A missing
+  or altered object, or an altered manifest, fails verification and is shown as failed.
+- **Repair.** `repair` runs an integrity check and then, for each version whose bytes
+  are missing or corrupt, writes the backup copy into the Vault as a new object, checks
+  it and points the version at it. Versions the backups never held stay unavailable and
+  are counted as such.
+- **Recovery of deleted files.** A snapshot lists the files it holds that no longer
+  exist in the Vault. Recovering one re-creates its newest content as a new file under
+  `Recovered from backup` in its original workspace, after verifying the backup copy.
+  Nothing is replaced; the list then shows where that content now is.
+- **Retention.** After a successful backup only the newest `NEXUS_STORAGE_BACKUP_KEEP`
+  snapshots are kept, and objects no remaining snapshot refers to are removed. If any
+  remaining manifest is unreadable, no object is removed.
+- **Truthful state.** The backup folder is reported as on the same drive as the Vault
+  when it is, with the plain statement that this does not protect against losing the
+  drive. Without a configured folder every backup route answers 409 and the UI says
+  backups are off. One backup operation runs at a time; a second gets 409.
+- **Integrity.** `reconcile` now works through versions in batches of 500 and takes the
+  object inventory before reading the keys, so a file committed meanwhile is not counted
+  as unreferenced. `GET /maintenance/integrity` returns the last check and the damaged
+  versions. `cleanup` removes unreferenced objects and interrupted upload fragments only
+  after the owner confirms, and only when they are more than an hour old, because an
+  upload stores its bytes before its metadata.
+- **Sharing.** The grant model from DC-4 is now usable from the browser: an item's
+  details list who can reach it (directly, through a folder above, or through the whole
+  workspace) and can share it with a department or one employee, to read or to read and
+  change, with an optional 7- or 30-day expiry. A **Shared** view lists shared items and
+  the Protection screen lists and revokes every grant. Granting a department access to
+  its own workspace and sharing an item in Trash are refused.
+- **Permission boundaries.** Tests now cover an outside employee on every read path
+  (details, download, preview, export, comparison, folder listing, links, search and
+  dashboard) before a grant, with a folder-scoped read grant, after it expires and for
+  write attempts. Backup, repair, integrity and cleanup are owner-only in the service.
+- **Performance.** Folder listings and search results read their versions and tags in
+  two queries per batch instead of two per item; a test asserts that 60 files take the
+  same number of queries as 5. Workspace usage is one grouped query, and a subtree is
+  selected by path prefix instead of loading the whole workspace.
+- **Protection screen** (`/vault/protection`) and the Data Center room panel show the
+  last backup, the last integrity check and the number of unavailable versions.
+
+### DC-8 owner routes
+
+| Route | Behavior |
+| --- | --- |
+| `GET /api/storage/backups` | Whether backups are configured, same-drive state, retention and the snapshots with their last verification |
+| `POST /api/storage/backups` | Take a snapshot (409 when not configured or another operation is running) |
+| `POST /api/storage/backups/{id}/verify` | Re-read every object of one snapshot against its checksum |
+| `GET /api/storage/backups/{id}/deleted` | Files the snapshot holds that are no longer in the Vault |
+| `POST /api/storage/backups/{id}/recover` | Re-create one deleted file as a new file |
+| `GET /api/storage/maintenance/integrity` | Last check and the versions currently damaged |
+| `POST /api/storage/maintenance/repair` | Check integrity, then restore damaged versions from the backups |
+| `POST /api/storage/maintenance/cleanup` | Remove old unreferenced objects; requires `{"confirm": true}` |
+| `GET /api/storage/grants[?entry_id=]` | Live sharing grants with names; with an item, the ones that reach it |
+| `GET /api/storage/search?shared=true` | Items shared by name |
+
+## DC-8 verification
+
+All backend, browser and full-stack execution used isolated WSL copies with temporary
+databases, storage and backup folders and fake providers. The owner's running
+installation and real provider credentials were not used.
+
+| Check | Result |
+| --- | --- |
+| DC-8 backup, verification, repair, recovery, retention, cleanup, sharing-boundary and query-count tests | **PASS** — 10 focused tests |
+| Complete backend suite | **PASS** — 283 passed, 4 skipped |
+| Backend Ruff; frontend ESLint and TypeScript | **PASS** |
+| Frontend unit suite | **PASS** — 204 tests |
+| Next.js production build | **PASS** — 25 routes generated |
+| Clean staged-tree setup, migrations and full-stack smoke test | **PASS** — fresh database, storage and backup folders; every check including backup created and verified, a permanently deleted file recovered from it, integrity and sharing routes |
+| Focused DC-8 browser workflows | **PASS** — back up, verify, lose a stored object on disk, detect it, repair it, recover a deleted file; share a folder, find it under Shared, revoke it |
+| Mobile browser check | **PASS** — Protection screen without horizontal overflow |
+| Visual inspection | **PASS** — Protection (healthy and damaged), sharing panel and phone screenshots reviewed |
+| Full Playwright browser suite | **PARTIAL** — 62 passed; the same pre-existing suspended-walk test failed under software GL because the employee remained `walking` instead of reaching `away`. Every Vault, Data Center, mobile and no-WebGL test passed. |
+| Secret and private-path scan of the changed files | **PASS** |
 
 ## Current limitations
 
 - HTTP routes act as the local company owner because NEXUS has no human authentication
   system. Internal employee artifact methods are permission checked, but they are not a
   substitute for future human multi-user authentication.
+- A backup covers Vault files and their metadata only. The application database (chats,
+  tasks, employees, settings) is not included, and a snapshot cannot rebuild the Vault's
+  database: repair needs the version's metadata row to exist, and recovery of a deleted
+  file restores its newest content only, not its history, tags or links.
+- Backups are taken when the owner asks; there is no schedule. A backup folder on the
+  same drive does not protect against losing the drive.
+- Creating a backup trusts an object already in the backup folder by its name and size;
+  only **Verify** re-reads its bytes.
 - The responsive browser file explorer is implemented; per-rack health and a writable
   room dashboard are not.
 - Eligible existing chat attachments, ready app files, completed task/workflow results
@@ -575,8 +670,8 @@ installation and real provider credentials were not used.
   sizes and checksums but are not compared. An app version cannot be rolled back from
   the Vault: changing an app remains a change request in Apps.
 - The dashboard is read on demand, not pushed live; it has a Refresh button.
-- Browser sharing workflows and backup are not implemented; those belong to DC-8.
-  Reconciliation remains manual and non-destructive.
+- Integrity checks are run by the owner, not on a timer. A grant applies to employee
+  actors inside NEXUS; there are no share links for people outside it.
 - The only implemented blob backend is local disk. Backup health is unknown while
   `NEXUS_STORAGE_BACKUP_ROOT` is unset.
 - A canonical Project model and human authentication do not yet exist. The integrations

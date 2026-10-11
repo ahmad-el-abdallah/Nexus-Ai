@@ -18,6 +18,10 @@ export interface StorageOverview {
   stored_bytes: number;
   quota_bytes_per_department: number;
   backup_configured: boolean;
+  backup_snapshot_count: number;
+  last_backup_at: string | null;
+  unavailable_version_count: number;
+  integrity_checked_at: string | null;
   last_event_at: string | null;
 }
 
@@ -133,6 +137,8 @@ export interface SearchOptions {
   kind?: "folder" | "file";
   tag?: string;
   trashed?: boolean;
+  /** Only items that are shared by name with a department or an employee. */
+  shared?: boolean;
   sort?: "name" | "created" | "updated" | "type";
   order?: "asc" | "desc";
   offset?: number;
@@ -351,3 +357,135 @@ export async function exportEntries(ids: string[]): Promise<void> {
   anchor.click();
   URL.revokeObjectURL(url);
 }
+
+export interface StorageGrant {
+  id: string;
+  workspace_id: string;
+  entry_id: string | null;
+  grantee_kind: "employee" | "department";
+  grantee_id: string;
+  permission: "read" | "write" | "manage";
+  expires_at: string | null;
+  revoked_at: string | null;
+  created_at: string;
+}
+
+/** A live grant with the names needed to show it; `inherited` means it comes from a folder above or the whole workspace. */
+export interface StorageGrantDetail extends StorageGrant {
+  grantee_name: string | null;
+  entry_name: string | null;
+  entry_path: string | null;
+  entry_kind: "folder" | "file" | null;
+  inherited: boolean;
+}
+
+export interface GrantRequest {
+  grantee_kind: "employee" | "department";
+  grantee_id: string;
+  permission: "read" | "write";
+  entry_id: string | null;
+  expires_at: string | null;
+}
+
+export const fetchGrants = (entryId?: string) =>
+  request<StorageGrantDetail[]>(`/api/storage/grants${entryId ? `?entry_id=${encodeURIComponent(entryId)}` : ""}`);
+export const createGrant = (workspaceId: string, body: GrantRequest) =>
+  request<StorageGrant>(`/api/storage/workspaces/${encodeURIComponent(workspaceId)}/grants`, { method: "POST", body: JSON.stringify(body) });
+export const revokeGrant = (id: string) => request<StorageGrant>(`/api/storage/grants/${encodeURIComponent(id)}`, { method: "DELETE" });
+
+export interface BackupSnapshot {
+  id: string;
+  created_at: string | null;
+  status: "complete" | "partial" | "unreadable";
+  files: number;
+  versions: number;
+  bytes: number;
+  skipped_versions: number;
+  verified_at: string | null;
+  verified_ok: boolean | null;
+}
+
+export interface BackupStatus {
+  configured: boolean;
+  /** True when the backups are on the same drive as the Vault; null when that could not be determined. */
+  same_device: boolean | null;
+  keep: number;
+  last_backup_at: string | null;
+  snapshots: BackupSnapshot[];
+}
+
+export interface BackupVerification {
+  id: string;
+  healthy: boolean;
+  manifest_ok: boolean;
+  checked: number;
+  ok: number;
+  missing: number;
+  corrupt: number;
+  verified_at: string;
+}
+
+export interface DeletedFile {
+  entry_id: string;
+  workspace_id: string;
+  name: string;
+  path: string;
+  version: number;
+  size_bytes: number;
+  recoverable: boolean;
+  /** Where identical content already is in the same workspace, if anywhere. */
+  present_at: string | null;
+}
+
+export interface IntegrityCheck {
+  checked: number;
+  missing: number;
+  corrupt: number;
+  recovered: number;
+  orphaned: number;
+  unsafe: number;
+}
+
+export interface IntegrityReport {
+  last_check: (IntegrityCheck & { at: string }) | null;
+  damaged_total: number;
+  damaged: {
+    entry_id: string;
+    workspace_id: string;
+    name: string;
+    path: string;
+    version: number;
+    is_current: boolean;
+    status: "missing" | "quarantined";
+    size_bytes: number;
+  }[];
+}
+
+export interface RepairReport {
+  examined: number;
+  repaired: number;
+  not_in_backup: number;
+  failed: number;
+}
+
+export interface CleanupReport {
+  removed_objects: number;
+  removed_bytes: number;
+  removed_temporary: number;
+  kept_recent: number;
+  unsafe: number;
+}
+
+export const fetchBackups = () => request<BackupStatus>("/api/storage/backups");
+export const createBackup = () => request<BackupSnapshot>("/api/storage/backups", { method: "POST" });
+export const verifyBackup = (id: string) => request<BackupVerification>(`/api/storage/backups/${encodeURIComponent(id)}/verify`, { method: "POST" });
+export const fetchDeletedFiles = (id: string) =>
+  request<{ id: string; total: number; items: DeletedFile[] }>(`/api/storage/backups/${encodeURIComponent(id)}/deleted`);
+/** Re-creates a deleted file from a backup as a new file in "Recovered from backup". */
+export const recoverFile = (snapshotId: string, entryId: string) =>
+  request<StorageEntry>(`/api/storage/backups/${encodeURIComponent(snapshotId)}/recover`, { method: "POST", body: JSON.stringify({ entry_id: entryId }) });
+export const fetchIntegrity = () => request<IntegrityReport>("/api/storage/maintenance/integrity");
+export const checkIntegrity = () => request<IntegrityCheck>("/api/storage/maintenance/reconcile", { method: "POST" });
+export const repairFromBackup = () => request<RepairReport>("/api/storage/maintenance/repair", { method: "POST" });
+export const cleanupStorage = () =>
+  request<CleanupReport>("/api/storage/maintenance/cleanup", { method: "POST", body: JSON.stringify({ confirm: true }) });

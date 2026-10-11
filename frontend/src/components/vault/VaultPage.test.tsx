@@ -80,6 +80,10 @@ describe("VaultPage", () => {
         const items = params.get("kind") === "folder" ? [folder] : [folder, file];
         return json({ items, total: items.length, offset: 0, limit: 50 });
       }
+      if (url === "/api/storage/grants?entry_id=ste_file") {
+        return json([{ id: "stg_1", workspace_id: "ws_company", entry_id: "ste_file", grantee_kind: "department", grantee_id: "marketing", permission: "write", expires_at: null, revoked_at: null, created_at: timestamp, grantee_name: "Marketing", entry_name: "release-notes.md", entry_path: "release-notes.md", entry_kind: "file", inherited: false }]);
+      }
+      if (url === "/api/departments" || url === "/api/employees") return json([]);
       throw new Error(`Unexpected request: ${url}`);
     });
     vi.stubGlobal("fetch", fetchMock);
@@ -96,6 +100,9 @@ describe("VaultPage", () => {
     expect(screen.getByRole("link", { name: "Download" })).toHaveAttribute("href", "/api/storage/entries/ste_file/download");
     expect(screen.getByRole("link", { name: "Download v1" })).toHaveAttribute("href", "/api/storage/entries/ste_file/download?version=1");
     expect(screen.getByRole("navigation", { name: "Vault sections" })).toBeInTheDocument();
+    const sharing = await screen.findByTestId("item-grant");
+    expect(sharing).toHaveTextContent("Marketing · can read and change");
+    expect(sharing).toHaveTextContent("shared directly · no expiry");
 
     fireEvent.click(screen.getByRole("button", { name: "List" }));
     expect(screen.getByRole("columnheader", { name: "Updated" })).toBeInTheDocument();
@@ -105,6 +112,9 @@ describe("VaultPage", () => {
 
     fireEvent.click(screen.getByRole("button", { name: /AI generated/ }));
     await waitFor(() => expect(vi.mocked(fetch).mock.calls.some(([url]) => String(url).includes("tag=ai-generated"))).toBe(true));
+    expect(screen.getByRole("button", { name: "Upload file" })).toBeDisabled();
+    fireEvent.click(screen.getByRole("button", { name: /Shared/ }));
+    await waitFor(() => expect(vi.mocked(fetch).mock.calls.some(([url]) => String(url).includes("shared=true"))).toBe(true));
     expect(screen.getByRole("button", { name: "Upload file" })).toBeDisabled();
     fireEvent.click(screen.getByRole("button", { name: /All files/ }));
 

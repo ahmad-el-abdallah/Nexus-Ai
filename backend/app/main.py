@@ -44,6 +44,7 @@ from app.services.activity import ActivityTracker
 from app.services.chat import ChatService
 from app.services.task_runner import TaskRunner
 from app.storage.artifacts import ArtifactRegistrar
+from app.storage.backup import VaultBackup
 from app.storage.service import VaultService
 from app.voice.service import VoiceService
 
@@ -77,6 +78,7 @@ def create_app(
         app.state.db = Database(settings.database_url)
         app.state.vault = VaultService(settings)
         await app.state.vault.initialize()
+        app.state.backup = VaultBackup(app.state.vault, settings)
         app.state.artifacts = ArtifactRegistrar(app.state.db, app.state.vault, settings.runs_dir)
         app.state.ai = AIGateway(app.state.db, settings, transport=ai_transport)
         app.state.events = EventBus()

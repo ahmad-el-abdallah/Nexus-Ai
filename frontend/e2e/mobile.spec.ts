@@ -46,3 +46,12 @@ test("the Vault dashboard and engineering projects fit a phone screen", async ({
   expect(await overflow()).toBeLessThanOrEqual(0);
   await page.screenshot({ path: "../.artifacts/e2e/digital-vault-dc7-projects-mobile.png", fullPage: true });
 });
+
+test("the Vault protection screen fits a phone screen", async ({ page }) => {
+  await page.goto("/vault/protection");
+  await expect(page.getByTestId("protection-tile")).toHaveCount(4);
+  await expect(page.getByRole("button", { name: "Back up now" })).toBeVisible();
+  const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+  expect(overflow).toBeLessThanOrEqual(0);
+  await page.screenshot({ path: "../.artifacts/e2e/digital-vault-dc8-protection-mobile.png", fullPage: true });
+});

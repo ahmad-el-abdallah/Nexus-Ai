@@ -36,6 +36,7 @@ from app.models import (
     StorageWorkspace,
     StorageWorkspaceScope,
 )
+from app.storage.backup import VaultBackup
 from app.storage.errors import VaultError
 from app.storage.insights import VaultInsights
 from app.storage.service import UNSET, VaultService
@@ -56,6 +57,13 @@ def _insights(request: Request) -> VaultInsights:
 
 
 Insights = Annotated[VaultInsights, Depends(_insights)]
+
+
+def _backup(request: Request) -> VaultBackup:
+    return request.app.state.backup
+
+
+Backup = Annotated[VaultBackup, Depends(_backup)]
 VersionNumber = Annotated[int | None, Query(ge=1)]
 
 
@@ -75,6 +83,10 @@ class StorageOverview(BaseModel):
     stored_bytes: int
     quota_bytes_per_department: int
     backup_configured: bool
+    backup_snapshot_count: int
+    last_backup_at: datetime | None
+    unavailable_version_count: int
+    integrity_checked_at: datetime | None
     last_event_at: datetime | None
 
 
@@ -402,6 +414,117 @@ class ReconcileOut(BaseModel):
     unsafe: int
 
 
+class GrantDetailOut(GrantOut):
+    grantee_name: str | None
+    entry_name: str | None
+    entry_path: str | None
+    entry_kind: Literal["folder", "file"] | None
+    inherited: bool
+
+
+class IntegrityCheck(ReconcileOut):
+    at: datetime
+
+
+class DamagedVersion(BaseModel):
+    entry_id: str
+    workspace_id: str
+    name: str
+    path: str
+    version: int
+    is_current: bool
+    status: Literal["missing", "quarantined"]
+    size_bytes: int
+
+
+class IntegrityOut(BaseModel):
+    last_check: IntegrityCheck | None
+    damaged_total: int
+    damaged: list[DamagedVersion]
+
+
+class CleanupRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    confirm: Literal[True]
+
+
+class CleanupOut(BaseModel):
+    removed_objects: int
+    removed_bytes: int
+    removed_temporary: int
+    kept_recent: int
+    unsafe: int
+
+
+class RepairOut(BaseModel):
+    examined: int
+    repaired: int
+    not_in_backup: int
+    failed: int
+
+
+class BackupSnapshot(BaseModel):
+    id: str
+    created_at: datetime | None
+    status: Literal["complete", "partial", "unreadable"]
+    files: int
+    versions: int
+    bytes: int
+    skipped_versions: int
+    verified_at: datetime | None
+    verified_ok: bool | None
+
+
+class BackupStatus(BaseModel):
+    configured: bool
+    same_device: bool | None
+    keep: int
+    last_backup_at: datetime | None
+    snapshots: list[BackupSnapshot]
+
+
+class BackupCreated(BackupSnapshot):
+    pruned_snapshots: int
+    pruned_blobs: int
+    pruned_bytes: int
+
+
+class BackupVerifyOut(BaseModel):
+    id: str
+    healthy: bool
+    manifest_ok: bool
+    checked: int
+    ok: int
+    missing: int
+    corrupt: int
+    verified_at: datetime
+
+
+class DeletedFile(BaseModel):
+    entry_id: str
+    workspace_id: str
+    name: str
+    path: str
+    version: int
+    size_bytes: int
+    recoverable: bool
+    # Where identical content already is in the same workspace, if anywhere.
+    present_at: str | None
+
+
+class DeletedFilesOut(BaseModel):
+    id: str
+    total: int
+    items: list[DeletedFile]
+
+
+class RecoverRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    entry_id: str = Field(min_length=1, max_length=32)
+
+
 async def _count(session: AsyncSession, model: type[object], *conditions: object) -> int:
     statement = select(func.count()).select_from(model)
     if conditions:
@@ -414,10 +537,13 @@ def _raise(error: VaultError) -> None:
 
 
 @router.get("/overview", response_model=StorageOverview)
-async def storage_overview(request: Request, session: Session, vault: Vault) -> StorageOverview:
+async def storage_overview(
+    request: Request, session: Session, vault: Vault, backup: Backup
+) -> StorageOverview:
     """Return real aggregate metadata suitable for the public room projection."""
     settings: Settings = request.app.state.settings
     await vault.sync_workspaces(session)
+    snapshot_count, last_backup_at = await backup.brief()
     stored_bytes = await session.scalar(
         select(func.coalesce(func.sum(StorageVersion.size_bytes), 0)).where(
             StorageVersion.status == StorageVersionStatus.AVAILABLE.value
@@ -454,6 +580,16 @@ async def storage_overview(request: Request, session: Session, vault: Vault) -> 
         stored_bytes=int(stored_bytes or 0),
         quota_bytes_per_department=settings.storage_department_quota_bytes,
         backup_configured=settings.storage_backup_root is not None,
+        backup_snapshot_count=snapshot_count,
+        last_backup_at=last_backup_at,
+        unavailable_version_count=await _count(
+            session, StorageVersion, StorageVersion.status != StorageVersionStatus.AVAILABLE.value
+        ),
+        integrity_checked_at=await session.scalar(
+            select(func.max(StorageEvent.created_at)).where(
+                StorageEvent.kind == "storage_reconciled"
+            )
+        ),
         last_event_at=await session.scalar(select(func.max(StorageEvent.created_at))),
     )
 
@@ -514,6 +650,19 @@ async def revoke_grant(grant_id: str, session: Session, vault: Vault) -> dict[st
         _raise(error)
 
 
+@router.get("/grants", response_model=list[GrantDetailOut])
+async def list_active_grants(
+    session: Session,
+    vault: Vault,
+    entry_id: Annotated[str | None, Query(max_length=32)] = None,
+) -> list[dict[str, object]]:
+    """Live sharing grants; with an item, only the ones that reach it."""
+    try:
+        return await vault.active_grants(session, entry_id=entry_id)
+    except VaultError as error:
+        _raise(error)
+
+
 @router.get("/workspaces/{workspace_id}/entries", response_model=list[EntryOut])
 async def list_entries(
     workspace_id: str,
@@ -537,6 +686,7 @@ async def search_entries(
     kind: Literal["folder", "file"] | None = None,
     tag: Annotated[str | None, Query(max_length=64)] = None,
     trashed: bool = False,
+    shared: bool = False,
     sort: Literal["name", "created", "updated", "type"] = "updated",
     order: Literal["asc", "desc"] = "desc",
     offset: Annotated[int, Query(ge=0)] = 0,
@@ -550,6 +700,7 @@ async def search_entries(
             kind=kind,
             tag=tag,
             trashed=trashed,
+            shared=shared,
             sort=sort,
             descending=order == "desc",
             offset=offset,
@@ -875,3 +1026,71 @@ async def create_link(
 async def reconcile_storage(session: Session, vault: Vault) -> dict[str, int]:
     """Validate every version against local storage without deleting orphaned data."""
     return await vault.reconcile(session)
+
+
+@router.get("/maintenance/integrity", response_model=IntegrityOut)
+async def storage_integrity(session: Session, vault: Vault) -> dict[str, object]:
+    """The last integrity check and the versions currently known to be damaged."""
+    return await vault.integrity(session)
+
+
+@router.post("/maintenance/cleanup", response_model=CleanupOut)
+async def cleanup_storage(_body: CleanupRequest, session: Session, vault: Vault) -> dict[str, int]:
+    """Remove stored objects that no file refers to, once they are past the grace period.
+
+    The body must be `{"confirm": true}`: removed objects cannot be brought back."""
+    return await vault.cleanup(session)
+
+
+@router.post("/maintenance/repair", response_model=RepairOut)
+async def repair_storage(session: Session, backup: Backup) -> dict[str, int]:
+    """Check integrity, then restore missing or corrupt versions from the backups."""
+    try:
+        return await backup.repair(session)
+    except VaultError as error:
+        _raise(error)
+
+
+@router.get("/backups", response_model=BackupStatus)
+async def list_backups(session: Session, backup: Backup) -> dict[str, object]:
+    return await backup.status(session)
+
+
+@router.post("/backups", response_model=BackupCreated, status_code=201)
+async def create_backup(session: Session, backup: Backup) -> dict[str, object]:
+    """Copy every stored version to the backup folder and record a verified manifest."""
+    try:
+        return await backup.create(session)
+    except VaultError as error:
+        _raise(error)
+
+
+@router.post("/backups/{snapshot_id}/verify", response_model=BackupVerifyOut)
+async def verify_backup(snapshot_id: str, session: Session, backup: Backup) -> dict[str, object]:
+    """Re-read every object of one backup and compare it with its checksum."""
+    try:
+        return await backup.verify(session, snapshot_id)
+    except VaultError as error:
+        _raise(error)
+
+
+@router.get("/backups/{snapshot_id}/deleted", response_model=DeletedFilesOut)
+async def backup_deleted_files(
+    snapshot_id: str, session: Session, backup: Backup
+) -> dict[str, object]:
+    """Files this backup holds that no longer exist in the Vault."""
+    try:
+        return await backup.deleted_files(session, snapshot_id)
+    except VaultError as error:
+        _raise(error)
+
+
+@router.post("/backups/{snapshot_id}/recover", response_model=EntryOut, status_code=201)
+async def recover_from_backup(
+    snapshot_id: str, body: RecoverRequest, session: Session, backup: Backup
+) -> dict[str, object]:
+    """Re-create a deleted file from a backup as a new file; nothing is replaced."""
+    try:
+        return await backup.recover(session, snapshot_id, body.entry_id)
+    except VaultError as error:
+        _raise(error)

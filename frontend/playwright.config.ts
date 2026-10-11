@@ -3,6 +3,8 @@ import { defineConfig, devices } from "@playwright/test";
 const PORT = Number(process.env.E2E_PORT ?? 3200);
 const API_PORT = Number(process.env.E2E_API_PORT ?? 18200);
 const DB = `/tmp/nexus-e2e-${API_PORT}.db`;
+// Vault backups written by the tests; emptied before every run.
+const BACKUPS = `/tmp/nexus-e2e-backups-${API_PORT}`;
 const FAKE_AI_PORT = Number(process.env.E2E_FAKE_AI_PORT ?? 18300);
 const PREVIEW_PORT = Number(process.env.E2E_PREVIEW_PORT ?? 18400);
 // Matches backend/tests/fake_provider.py — e2e never calls the real NVIDIA API.
@@ -64,7 +66,7 @@ export default defineConfig({
     },
     {
       // Isolated backend with a fresh, migrated throwaway database.
-      command: `rm -f ${DB}* && uv run --frozen alembic upgrade head && uv run --frozen python -m app`,
+      command: `rm -f ${DB}* && rm -rf ${BACKUPS} && uv run --frozen alembic upgrade head && uv run --frozen python -m app`,
       cwd: "../backend",
       env: {
         NEXUS_DATABASE_URL: `sqlite+aiosqlite:///${DB}`,
@@ -78,6 +80,7 @@ export default defineConfig({
         NEXUS_VOICE_DIR: `/tmp/nexus-e2e-voice-${API_PORT}`,
         // Vault work must never touch the developer's or owner's persistent storage.
         NEXUS_STORAGE_ROOT: `/tmp/nexus-e2e-storage-${API_PORT}`,
+        NEXUS_STORAGE_BACKUP_ROOT: BACKUPS,
         NEXUS_SECRET_KEY: E2E_SECRET_KEY,
         NEXUS_PUBLIC_URL: `http://127.0.0.1:${PORT}`,
         // The fake mail control port also serves a fake Brevo API.

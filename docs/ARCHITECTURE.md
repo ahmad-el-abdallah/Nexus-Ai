@@ -734,7 +734,15 @@ restores, and only the registrar may create the provenance relations that mark a
 as a source record's output. `VaultInsights` is a read-only layer over the same
 permission and integrity checks: a bounded line comparison of two stored versions, the
 engineering project viewer (real `App`/`AppVersion` rows with the stored files and the
-changes between versions) and the storage dashboard.
+changes between versions) and the storage dashboard. DC-8 adds `VaultBackup`: a
+snapshot copies every stored version into a separate, content-addressed backup folder,
+checks each copy against its checksum and writes a manifest of the Vault's metadata
+with its own checksum. From those snapshots it can verify a backup, put back the bytes
+of versions the Vault has lost, and re-create a permanently deleted file as a new file.
+It never deletes or overwrites live content. Integrity checking runs in bounded batches,
+and unreferenced objects are removed only on the owner's confirmation and only when
+they are older than a grace period. Sharing is the existing grant model exposed in the
+browser, enforced by the same service checks on every read path.
 
 Searchable metadata lives in the existing database and immutable bytes live under
 opaque keys in the configurable local storage root. `VaultService` coordinates both;
