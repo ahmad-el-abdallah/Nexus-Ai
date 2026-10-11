@@ -97,6 +97,20 @@ if [[ "$upload_code" == "201" && -n "$upload_id" ]]; then
   if ! curl -fs -H 'content-type: application/json' -d '{"entry_ids":["'"$upload_id"'"]}' "$API/api/storage/export" -o "$TMP/vault-export.zip" || [[ "$(head -c 2 "$TMP/vault-export.zip")" != "PK" ]]; then
     printf '  \033[31mFAIL\033[0m  %s\n' "Digital Vault ZIP export failed"; failures=$((failures + 1))
   fi
+  # Versions: add one, compare it with the first, restore the first as a third.
+  printf 'smoke file contents\nsecond line\n' >"$TMP/vault-smoke-2.txt"
+  version_code="$(curl -s -o /dev/null -w '%{http_code}' -F 'file=@'"$TMP/vault-smoke-2.txt"';type=text/plain;filename=vault-smoke.txt' "$API/api/storage/entries/$upload_id/versions" || true)"
+  if [[ "$version_code" == "201" ]] \
+    && curl -fs "$API/api/storage/diff?before_entry=$upload_id&before_version=1&after_entry=$upload_id" | grep -q '"added":1,"removed":0' \
+    && [[ "$(curl -s -o /dev/null -w '%{http_code}' -X POST "$API/api/storage/entries/$upload_id/versions/1/restore")" == "201" ]] \
+    && curl -fs "$API/api/storage/entries/$upload_id/download" -o "$TMP/vault-restored.txt" && cmp -s "$TMP/vault-smoke.txt" "$TMP/vault-restored.txt" \
+    && curl -fs "$API/api/storage/entries/$upload_id/download?version=2" -o "$TMP/vault-second.txt" && cmp -s "$TMP/vault-smoke-2.txt" "$TMP/vault-second.txt"; then
+    printf '  \033[32mPASS\033[0m  %s\n' "Digital Vault new version, comparison and restore"
+  else
+    printf '  \033[31mFAIL\033[0m  %s\n' "Digital Vault version history failed"; failures=$((failures + 1))
+  fi
+  check "GET /api/storage/dashboard" 200 "$API/api/storage/dashboard" '"versions":3'
+  check "GET /api/storage/projects" 200 "$API/api/storage/projects" '^\['
   if ! curl -fs -X DELETE "$API/api/storage/entries/$upload_id" -o /dev/null; then
     printf '  \033[31mFAIL\033[0m  %s\n' "Digital Vault trash failed"; failures=$((failures + 1))
   fi
@@ -111,6 +125,8 @@ echo "Frontend:"
 check "GET /healthz"          200 "$WEB/healthz"          '"status":"ok"'
 check "GET / (headquarters)" 200 "$WEB/"                 'NEXUS AI'
 check "GET /vault"            200 "$WEB/vault"            'Digital Vault'
+check "GET /vault/projects"   200 "$WEB/vault/projects"   'Engineering projects'
+check "GET /vault/dashboard"  200 "$WEB/vault/dashboard"  'Digital Vault'
 check "GET /system"           200 "$WEB/system"           'System status'
 check "GET /departments"      200 "$WEB/departments"      'Departments'
 check "GET /org"              200 "$WEB/org"              'Org chart'
@@ -127,6 +143,7 @@ check "GET /api/health/ready" 200 "$WEB/api/health/ready" 'x-request-id'
 check "GET /api/system/info"  200 "$WEB/api/system/info"  '"name":"NEXUS AI"'
 check "GET /api/departments"  200 "$WEB/api/departments"  '"key":"knowledge"'
 check "GET /api/storage/overview" 200 "$WEB/api/storage/overview" '"writes_enabled":true'
+check "GET /api/storage/dashboard" 200 "$WEB/api/storage/dashboard" '"activity":\['
 check "GET /api/ai/settings"  200 "$WEB/api/ai/settings"  '"provider":"nvidia"'
 check "GET /api/conversations" 200 "$WEB/api/conversations" '^\['
 check "GET /api/tasks"        200 "$WEB/api/tasks"        '^\['

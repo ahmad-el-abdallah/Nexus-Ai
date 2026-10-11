@@ -18,7 +18,7 @@ screen is simulated.
 > writes the files of their role, and the stored app can be downloaded, run here in a
 > sandbox, or changed. See [`docs/STAGES.md`](docs/STAGES.md).
 
-> **Data Center feature track:** DC-6 is complete and awaiting approval for DC-7. The
+> **Data Center feature track:** DC-7 is complete and awaiting approval for DC-8. The
 > searchable, enterable Data Center room now appears beside Engineering with twelve
 > racks and a live storage overview. The local Vault backend now provides validated,
 > quota-limited file APIs plus dynamic department workspaces, actor-aware grants and
@@ -28,7 +28,10 @@ screen is simulated.
 > error audit events rather than fake successes. Its `/vault` browser provides workspace and folder
 > navigation, bounded metadata search, safe previews, metadata/tags/favorites, upload,
 > rename, move, copy, Trash/restore/permanent delete, verified download, ZIP export and
-> a dedicated **AI generated** view.
+> a dedicated **AI generated** view. Every file keeps its full version history: older
+> versions can be downloaded, compared line by line and restored as a new version. The
+> **Engineering projects** screen shows each stored app version with what changed, and
+> the **Dashboard** shows real totals, usage and activity.
 > It is tracked separately from the 16-stage roadmap and does not approve Stage 11. See
 > [`docs/DATA_CENTER.md`](docs/DATA_CENTER.md).
 

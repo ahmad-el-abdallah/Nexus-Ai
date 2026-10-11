@@ -80,6 +80,14 @@ function DataCenterStatus() {
       <Link href="/vault" className="mt-3 block w-full rounded-xl bg-nx-violet/10 px-4 py-3 text-center text-sm font-medium text-nx-violet ring-1 ring-nx-violet/30 transition hover:bg-nx-violet/15 hover:text-white">
         Open Digital Vault explorer →
       </Link>
+      <div className="mt-2 grid grid-cols-2 gap-2 text-center text-xs">
+        <Link href="/vault/projects" className="rounded-xl px-3 py-2.5 text-nx-muted ring-1 ring-nx-line transition hover:bg-white/5 hover:text-nx-text">
+          Engineering projects
+        </Link>
+        <Link href="/vault/dashboard" className="rounded-xl px-3 py-2.5 text-nx-muted ring-1 ring-nx-line transition hover:bg-white/5 hover:text-nx-text">
+          Storage dashboard
+        </Link>
+      </div>
       <div className="mt-3 rounded-xl bg-white/[0.03] px-4 py-3 text-xs leading-5 text-nx-muted ring-1 ring-nx-line">
         <p>{overview.writes_enabled ? "Storage operations are available through the owner API." : "Storage operations are read-only."}</p>
         <p>{overview.read_only_workspace_count ? `${overview.read_only_workspace_count} workspace${overview.read_only_workspace_count === 1 ? " is" : "s are"} currently read-only.` : "All workspaces currently accept authorized writes."}</p>

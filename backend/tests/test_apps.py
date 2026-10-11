@@ -613,6 +613,36 @@ async def test_deleting_an_app_removes_everything(apps_client: httpx.AsyncClient
     assert (await apps_client.delete(f"/api/apps/{app['id']}")).status_code == 404
 
 
+async def test_deleting_an_app_waits_for_its_copy_to_the_vault(
+    apps_client: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    registrar = apps_client.app.state.artifacts  # type: ignore[attr-defined]
+    register = registrar.register_app_version
+    started, release = asyncio.Event(), asyncio.Event()
+    finished: list[str] = []
+
+    async def held(version_id: str) -> Any:
+        started.set()
+        await release.wait()
+        summary = await register(version_id)
+        finished.append(version_id)
+        return summary
+
+    monkeypatch.setattr(registrar, "register_app_version", held)
+    app = await design(apps_client)
+    assert (await apps_client.post(f"/api/apps/{app['id']}/approve")).status_code == 200
+    await asyncio.wait_for(started.wait(), 30)
+
+    # Cancelling the copy in the middle of a write could leave the database locked.
+    deleting = asyncio.create_task(apps_client.delete(f"/api/apps/{app['id']}"))
+    await asyncio.sleep(0.1)
+    assert not deleting.done()
+    release.set()
+    assert (await deleting).status_code == 204
+    assert len(finished) == 1
+    assert (await apps_client.get("/api/apps")).json() == []
+
+
 async def test_build_from_a_chat_message_reports_back_in_that_conversation(
     apps_client: httpx.AsyncClient,
 ) -> None:

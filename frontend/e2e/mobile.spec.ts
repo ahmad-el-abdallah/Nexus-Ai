@@ -31,3 +31,18 @@ test("the Digital Vault fits a phone screen", async ({ page }) => {
   await expect(page.getByPlaceholder(/Search names/)).toBeVisible();
   await page.screenshot({ path: "../.artifacts/e2e/digital-vault-dc5-mobile.png", fullPage: true });
 });
+
+test("the Vault dashboard and engineering projects fit a phone screen", async ({ page }) => {
+  const overflow = () => page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+  await page.goto("/vault/dashboard");
+  await expect(page.getByTestId("dashboard-tile")).toHaveCount(6);
+  expect(await overflow()).toBeLessThanOrEqual(0);
+  await page.screenshot({ path: "../.artifacts/e2e/digital-vault-dc7-dashboard-mobile.png", fullPage: true });
+
+  await page.goto("/vault/projects");
+  const projects = await (await page.request.get("/api/storage/projects")).json();
+  if (projects.length) await expect(page.getByRole("heading", { level: 2, name: projects[0].name })).toBeVisible();
+  else await expect(page.getByRole("heading", { name: "No engineering projects yet" })).toBeVisible();
+  expect(await overflow()).toBeLessThanOrEqual(0);
+  await page.screenshot({ path: "../.artifacts/e2e/digital-vault-dc7-projects-mobile.png", fullPage: true });
+});

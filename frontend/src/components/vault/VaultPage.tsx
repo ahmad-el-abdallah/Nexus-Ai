@@ -25,28 +25,15 @@ import {
   type StorageWorkspace,
 } from "@/lib/storage";
 
+import { bytes, when } from "./format";
+import { VaultTabs } from "./VaultTabs";
+import { VersionHistory } from "./VersionHistory";
+
 type Mode = "all" | "folder" | "recent" | "generated" | "favorites" | "trash";
 type View = "grid" | "list";
 type Sort = "name" | "created" | "updated" | "type";
 
 const PAGE_SIZE = 50;
-
-function bytes(value: number | null): string {
-  if (value === null) return "—";
-  if (value < 1024) return `${value} B`;
-  const units = ["KiB", "MiB", "GiB", "TiB"];
-  let amount = value / 1024;
-  let index = 0;
-  while (amount >= 1024 && index < units.length - 1) {
-    amount /= 1024;
-    index += 1;
-  }
-  return `${amount >= 10 ? amount.toFixed(0) : amount.toFixed(1)} ${units[index]}`;
-}
-
-function when(value: string): string {
-  return new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" }).format(new Date(value));
-}
 
 function workspaceName(workspace: StorageWorkspace): string {
   if (workspace.scope === "company") return "Company Vault";
@@ -201,7 +188,7 @@ function Inspector({ detail, workspaces, folders, busy, onAction }: InspectorPro
         {[['Owner', detail.owner_name], ['Creator', detail.created_by_name ?? detail.created_by_kind], ['Size', bytes(detail.size_bytes)], ['Updated', when(detail.updated_at)], ['Visibility', detail.visibility], ['Checksum', detail.sha256 ? `${detail.sha256.slice(0, 12)}…` : '—']].map(([label, value]) => <div key={label} className="min-w-0 bg-nx-bg-raised/80 p-3"><dt className="text-[9px] tracking-wider text-nx-faint uppercase">{label}</dt><dd className="mt-1 truncate text-nx-muted" title={value}>{value}</dd></div>)}
       </dl>
       <div className="space-y-4 p-4 text-xs">
-        <section><h3 className="font-medium text-nx-text">Versions · {detail.versions.length}</h3>{detail.versions.length ? <ul className="mt-2 space-y-1 text-nx-muted">{detail.versions.map((version) => <li key={version.id}>v{version.number} · {bytes(version.size_bytes)} · {version.status}</li>)}</ul> : <p className="mt-1 text-nx-faint">Folders have no versions.</p>}</section>
+        <VersionHistory detail={detail} busy={busy} onAction={onAction} />
         <section><h3 className="font-medium text-nx-text">Linked work · {detail.links.length}</h3>{detail.links.length ? <ul className="mt-2 space-y-1 text-nx-muted">{detail.links.map((link) => <li key={link.id}>{link.target_type.replace('_', ' ')} · {link.label ?? link.target_id}</li>)}</ul> : <p className="mt-1 text-nx-faint">No source links.</p>}</section>
         <section><h3 className="font-medium text-nx-text">Activity</h3><ul className="mt-2 space-y-2">{detail.events.slice(0, 8).map((event) => <li key={event.id}><p className="text-nx-muted">{event.text}</p><p className="text-[10px] text-nx-faint">{event.actor_name ?? "System"} · {when(event.created_at)}</p></li>)}</ul></section>
       </div>
@@ -305,6 +292,7 @@ export function VaultPage() {
 
   return (
     <AppShell title="Digital Vault" subtitle="Persistent company artifacts with permission-enforced storage, safe previews and verified downloads." actions={<Link href="/" className="rounded-xl px-4 py-2 text-sm text-nx-muted ring-1 ring-nx-line hover:bg-white/5 hover:text-nx-text">Return to Data Center</Link>}>
+      <VaultTabs />
       {error && <div role="alert" className="flex items-center justify-between rounded-xl bg-nx-error/10 px-4 py-3 text-sm text-nx-error ring-1 ring-nx-error/30"><span>{error}</span><button onClick={() => setError(null)}>Dismiss</button></div>}
       <div className="grid min-w-0 gap-4 lg:grid-cols-[210px_minmax(0,1fr)_330px]">
         <aside className="glass max-h-[28rem] min-w-0 overflow-y-auto p-3 lg:sticky lg:top-6 lg:h-[calc(100vh-3rem)] lg:max-h-none" aria-label="Vault navigation">

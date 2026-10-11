@@ -12,6 +12,7 @@ from fastapi import (
     File,
     Form,
     HTTPException,
+    Path,
     Query,
     Request,
     Response,
@@ -36,6 +37,7 @@ from app.models import (
     StorageWorkspaceScope,
 )
 from app.storage.errors import VaultError
+from app.storage.insights import VaultInsights
 from app.storage.service import UNSET, VaultService
 
 router = APIRouter(prefix="/api/storage", tags=["storage"])
@@ -47,6 +49,14 @@ def _vault(request: Request) -> VaultService:
 
 
 Vault = Annotated[VaultService, Depends(_vault)]
+
+
+def _insights(request: Request) -> VaultInsights:
+    return VaultInsights(request.app.state.vault)
+
+
+Insights = Annotated[VaultInsights, Depends(_insights)]
+VersionNumber = Annotated[int | None, Query(ge=1)]
 
 
 class StorageOverview(BaseModel):
@@ -176,6 +186,9 @@ class VersionOut(BaseModel):
     size_bytes: int
     sha256: str
     status: Literal["available", "missing", "quarantined"]
+    is_current: bool
+    change_description: str | None
+    created_by_kind: Literal["owner", "employee", "system"]
     created_by_name: str | None
     created_at: datetime
 
@@ -199,9 +212,158 @@ class EntryDetailOut(EntryOut):
     owner_kind: Literal["company", "department", "employee"]
     owner_id: str
     owner_name: str
+    # True when the file mirrors a task, workflow, app file, code run or attachment.
+    source_managed: bool
     versions: list[VersionOut]
     links: list[LinkOut]
     events: list[EventOut]
+
+
+class DiffSide(BaseModel):
+    entry_id: str
+    name: str
+    path: str
+    version: int
+    size_bytes: int
+    sha256: str
+    created_by_name: str | None
+    created_at: datetime
+
+
+class DiffLine(BaseModel):
+    kind: Literal["hunk", "context", "add", "remove"]
+    old: int | None
+    new: int | None
+    text: str
+
+
+class DiffOut(BaseModel):
+    before: DiffSide
+    after: DiffSide
+    identical: bool
+    comparable: bool
+    reason: str | None
+    line_endings_only: bool
+    added: int
+    removed: int
+    truncated: bool
+    lines: list[DiffLine]
+
+
+class ProjectOut(BaseModel):
+    id: str
+    name: str
+    description: str
+    current_version: int
+    latest_status: str | None
+    version_count: int
+    ready_version_count: int
+    stored_file_count: int
+    stored_bytes: int
+    created_at: datetime
+    updated_at: datetime
+
+
+class ProjectFileOut(BaseModel):
+    path: str
+    area: str
+    purpose: str
+    author_name: str | None
+    author_role: str | None
+    entry_id: str | None
+    state: str
+    size_bytes: int | None
+    sha256: str | None
+    change: Literal["added", "modified", "unchanged"] | None
+    previous_entry_id: str | None
+
+
+class ProjectVersionOut(BaseModel):
+    id: str
+    number: int
+    base_version: int | None
+    status: str
+    request: str
+    stack: str | None
+    tree_sha256: str | None
+    finished_at: datetime | None
+    folder_id: str | None
+    stored_file_count: int
+    stored_bytes: int
+    files: list[ProjectFileOut]
+    removed: list[str]
+
+
+class ProjectDetailOut(BaseModel):
+    id: str
+    name: str
+    description: str
+    current_version: int
+    created_at: datetime
+    updated_at: datetime
+    versions: list[ProjectVersionOut]
+
+
+class DashboardTotals(BaseModel):
+    files: int
+    folders: int
+    trashed: int
+    versions: int
+    stored_bytes: int
+    unavailable_files: int
+    error_events: int
+    registration_failures: int
+
+
+class DashboardWorkspace(WorkspaceOut):
+    name: str
+    file_count: int
+
+
+class DashboardType(BaseModel):
+    artifact_type: str | None
+    files: int
+    bytes: int
+
+
+class DashboardCreatorKind(BaseModel):
+    kind: Literal["owner", "employee", "system"]
+    files: int
+
+
+class DashboardCreator(BaseModel):
+    employee_id: str
+    name: str | None
+    files: int
+
+
+class DashboardDay(BaseModel):
+    date: str
+    events: int
+    errors: int
+
+
+class DashboardEvent(EventOut):
+    workspace_id: str | None
+
+
+class DashboardProjects(BaseModel):
+    apps: int
+    ready_versions: int
+    stored_files: int
+
+
+class DashboardOut(BaseModel):
+    generated_at: datetime
+    utc_offset_minutes: int
+    totals: DashboardTotals
+    workspaces: list[DashboardWorkspace]
+    by_type: list[DashboardType]
+    by_creator: list[DashboardCreatorKind]
+    top_creators: list[DashboardCreator]
+    activity: list[DashboardDay]
+    recent_events: list[DashboardEvent]
+    projects: DashboardProjects | None
 
 
 class SearchOut(BaseModel):
@@ -435,9 +597,11 @@ async def upload_file(
 
 
 @router.get("/entries/{entry_id}/download")
-async def download_file(entry_id: str, session: Session, vault: Vault) -> StreamingResponse:
+async def download_file(
+    entry_id: str, session: Session, vault: Vault, version: VersionNumber = None
+) -> StreamingResponse:
     try:
-        download = await vault.download(session, entry_id)
+        download = await vault.download(session, entry_id, version_number=version)
     except VaultError as error:
         _raise(error)
     encoded_name = quote(download.name, safe="")
@@ -460,11 +624,98 @@ async def get_entry(entry_id: str, session: Session, vault: Vault) -> dict[str, 
         _raise(error)
 
 
+@router.post("/entries/{entry_id}/versions", response_model=EntryOut, status_code=201)
+async def upload_version(
+    entry_id: str,
+    session: Session,
+    vault: Vault,
+    file: Annotated[UploadFile, File()],
+    change_description: Annotated[str | None, Form(max_length=500)] = None,
+) -> dict[str, object]:
+    """Add new content as the next immutable version of an existing file."""
+    if not file.filename:
+        raise HTTPException(422, "The upload must have a file name.")
+    try:
+        return await vault.add_version(
+            session, entry_id, file.filename, file.content_type, file.read, change_description
+        )
+    except VaultError as error:
+        _raise(error)
+    finally:
+        await file.close()
+
+
+@router.post(
+    "/entries/{entry_id}/versions/{number}/restore", response_model=EntryOut, status_code=201
+)
+async def restore_version(
+    entry_id: str,
+    number: Annotated[int, Path(ge=1)],
+    session: Session,
+    vault: Vault,
+) -> dict[str, object]:
+    """Make an older version current by appending a copy; history is not rewritten."""
+    try:
+        return await vault.restore_version(session, entry_id, number)
+    except VaultError as error:
+        _raise(error)
+
+
+@router.get("/diff", response_model=DiffOut)
+async def diff_versions(
+    session: Session,
+    insights: Insights,
+    before_entry: Annotated[str, Query(max_length=32)],
+    after_entry: Annotated[str, Query(max_length=32)],
+    before_version: VersionNumber = None,
+    after_version: VersionNumber = None,
+) -> dict[str, object]:
+    """Bounded line comparison of two stored text versions."""
+    try:
+        return await insights.diff(
+            session,
+            before_entry=before_entry,
+            before_version=before_version,
+            after_entry=after_entry,
+            after_version=after_version,
+        )
+    except VaultError as error:
+        _raise(error)
+
+
+@router.get("/projects", response_model=list[ProjectOut])
+async def list_projects(session: Session, insights: Insights) -> list[dict[str, object]]:
+    try:
+        return await insights.projects(session)
+    except VaultError as error:
+        _raise(error)
+
+
+@router.get("/projects/{app_id}", response_model=ProjectDetailOut)
+async def get_project(app_id: str, session: Session, insights: Insights) -> dict[str, object]:
+    try:
+        return await insights.project(session, app_id)
+    except VaultError as error:
+        _raise(error)
+
+
+@router.get("/dashboard", response_model=DashboardOut)
+async def storage_dashboard(
+    session: Session,
+    insights: Insights,
+    utc_offset_minutes: Annotated[int, Query(ge=-840, le=840)] = 0,
+) -> dict[str, object]:
+    """Real totals and activity; days are counted in the caller's UTC offset."""
+    return await insights.dashboard(session, utc_offset_minutes=utc_offset_minutes)
+
+
 @router.get("/entries/{entry_id}/preview")
-async def preview_entry(entry_id: str, session: Session, vault: Vault) -> Response:
+async def preview_entry(
+    entry_id: str, session: Session, vault: Vault, version: VersionNumber = None
+) -> Response:
     try:
         detail = await vault.entry_detail(session, entry_id)
-        download = await vault.download(session, entry_id)
+        download = await vault.download(session, entry_id, version_number=version)
     except VaultError as error:
         _raise(error)
     kind = str(detail["preview_kind"])

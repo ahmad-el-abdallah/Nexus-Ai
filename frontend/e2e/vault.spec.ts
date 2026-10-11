@@ -51,7 +51,7 @@ test("the Digital Vault completes the core browser workflow", async ({ page, req
   await expect(page.getByLabel("Description")).toHaveValue("Approved launch notes");
 
   const download = page.waitForEvent("download");
-  await page.getByRole("link", { name: "Download" }).click();
+  await page.getByRole("link", { name: "Download", exact: true }).click();
   expect((await download).suggestedFilename()).toBe("launch-notes.md");
 
   await page.getByRole("button", { name: "Favorite", exact: true }).click();

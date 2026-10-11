@@ -167,6 +167,7 @@ class AppBuilder:
         self.check = checks.check  # replaced in tests that don't have a sandbox
         self.running: dict[str, asyncio.Task[None]] = {}
         self._restart_pending: set[str] = set()
+        self._finishing: set[str] = set()  # ready apps still being copied to the Vault
         self._closing = False
         self._deadline: dict[str, float] = {}
         self._calls = asyncio.Lock()
@@ -402,7 +403,10 @@ class AppBuilder:
         task = self.running.get(app_id)
         if task is None or task.done() or task is asyncio.current_task():
             return
-        task.cancel()
+        # A finished version being copied to the Vault is left to finish: cancelling it
+        # in the middle of a write can leave SQLite locked for whoever writes next.
+        if app_id not in self._finishing:
+            task.cancel()
         await asyncio.wait([task], timeout=10)
 
     async def _drive(self, app_id: str) -> None:
@@ -1020,13 +1024,19 @@ class AppBuilder:
                 actor=lead,
                 messages=messages,
             )
-        if self.artifacts:
-            try:
-                await self.artifacts.register_app_version(build.version_id)
-            except Exception:
-                log.exception("app.artifact_registration_failed", version_id=build.version_id)
-        await self.activity.flash(lead.id, EmployeeStatus.COMPLETED.value, f"Delivered {app.name}")
-        await self._publish(build.app_id)
+        self._finishing.add(build.app_id)
+        try:
+            if self.artifacts:
+                try:
+                    await self.artifacts.register_app_version(build.version_id)
+                except Exception:
+                    log.exception("app.artifact_registration_failed", version_id=build.version_id)
+            await self.activity.flash(
+                lead.id, EmployeeStatus.COMPLETED.value, f"Delivered {app.name}"
+            )
+            await self._publish(build.app_id)
+        finally:
+            self._finishing.discard(build.app_id)
 
     # ================================================================= helpers
 

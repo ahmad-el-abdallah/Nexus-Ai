@@ -62,6 +62,24 @@ class VaultDownload:
 
 
 @dataclass(frozen=True)
+class VersionContent:
+    """One validated file version; `data` is None when it was too large to load."""
+
+    entry_id: str
+    workspace_id: str
+    name: str
+    path: str
+    number: int
+    size: int
+    sha256: str
+    mime_type: str
+    preview_kind: str
+    created_by_name: str | None
+    created_at: datetime
+    data: bytes | None
+
+
+@dataclass(frozen=True)
 class VaultArchive:
     name: str
     size: int
@@ -81,6 +99,25 @@ class StorageActor:
 OWNER_ACTOR = StorageActor(kind="owner", name="Owner")
 SYSTEM_ACTOR = StorageActor(kind="system", name="NEXUS storage service")
 PERMISSION_RANK = {"read": 1, "write": 2, "manage": 3}
+
+# Link relations written only by the artifact registrar. A file that carries one mirrors
+# a real source record, so nobody else may create such a link or rewrite that history.
+MANAGED_RELATIONS = {"task": "result", "workflow": "report", "app_file": "source"}
+MANAGED_RELATION_PREFIXES = {"code_run": "output-", "message": "attachment-"}
+MIRRORED_SOURCES = {
+    "task": "a task result",
+    "workflow": "a workflow report",
+    "app_file": "an app source file",
+    "code_run": "a code-run output",
+    "message": "a chat attachment",
+}
+
+
+def managed_relation(target_type: str, relation: str) -> bool:
+    if MANAGED_RELATIONS.get(target_type) == relation:
+        return True
+    prefix = MANAGED_RELATION_PREFIXES.get(target_type)
+    return prefix is not None and relation.startswith(prefix)
 
 
 class VaultService:
@@ -335,12 +372,18 @@ class VaultService:
         relation: str,
         label: str | None,
         actor: StorageActor = OWNER_ACTOR,
+        managed: bool = False,
     ) -> dict[str, Any]:
         entry = await self._entry(session, entry_id)
         workspace = await self._workspace(session, entry.workspace_id, write=True)
         await self._require(session, actor, workspace, "write", entry)
         if not re.fullmatch(r"[a-z][a-z0-9_-]{0,31}", relation):
             raise VaultError(422, "The artifact link relation is invalid.")
+        if managed_relation(target_type, relation) and not managed:
+            # Only the registrar may claim that a file *is* a source record's output.
+            raise VaultError(
+                422, f"The {relation} relation is reserved for automatic registration."
+            )
         await self._validate_link_target(session, workspace, target_type, target_id)
         version = await self._current_version(session, entry)
         version_id = version.id if version else None
@@ -554,6 +597,7 @@ class VaultService:
                 "tags": [tag.tag for tag in tags],
                 "favorite": any(tag.tag_key == "favorite" for tag in tags),
                 "preview_kind": self._preview_kind(entry, versions[0] if versions else None),
+                "source_managed": await self.source_link(session, entry) is not None,
                 "versions": [
                     {
                         "id": version.id,
@@ -562,6 +606,9 @@ class VaultService:
                         "size_bytes": version.size_bytes,
                         "sha256": version.sha256,
                         "status": version.status,
+                        "is_current": version.number == entry.current_version_number,
+                        "change_description": version.change_description,
+                        "created_by_kind": version.created_by_kind,
                         "created_by_name": version.created_by_name,
                         "created_at": version.created_at,
                     }
@@ -1005,16 +1052,23 @@ class VaultService:
         session: AsyncSession,
         entry_id: str,
         *,
+        version_number: int | None = None,
         actor: StorageActor = OWNER_ACTOR,
     ) -> VaultDownload:
+        """Stream the current version, or one named historical version, after
+        revalidating its size and checksum."""
         entry = await self._entry(session, entry_id)
         workspace = await self._workspace(session, entry.workspace_id)
         await self._require(session, actor, workspace, "read", entry)
         if entry.kind != StorageEntryKind.FILE.value or entry.trashed_at is not None:
             raise VaultError(404, "File not found.")
-        if entry.status != StorageEntryStatus.AVAILABLE.value:
-            raise VaultError(409, "This file is not currently available.")
-        version = await self._current_version(session, entry)
+        if version_number is None or version_number == entry.current_version_number:
+            # An older version stays readable while the newest one is missing or corrupt.
+            if entry.status != StorageEntryStatus.AVAILABLE.value:
+                raise VaultError(409, "This file is not currently available.")
+            version = await self._current_version(session, entry)
+        else:
+            version = await self._version(session, entry, version_number)
         if version is None or version.status != StorageVersionStatus.AVAILABLE.value:
             raise VaultError(409, "This file version is not currently available.")
         try:
@@ -1053,6 +1107,43 @@ class VaultService:
             mime_type=version.mime_type,
             size=version.size_bytes,
             stream=self.blobs.chunks(version.storage_key),
+        )
+
+    async def version_content(
+        self,
+        session: AsyncSession,
+        entry_id: str,
+        *,
+        version_number: int | None = None,
+        limit: int,
+        actor: StorageActor = OWNER_ACTOR,
+    ) -> VersionContent:
+        """Read one validated version into memory, unless it is larger than `limit`."""
+        download = await self.download(
+            session, entry_id, version_number=version_number, actor=actor
+        )
+        entry = await self._entry(session, entry_id)
+        number = version_number or entry.current_version_number
+        version = await self._version(session, entry, number)
+        data: bytes | None = None
+        try:
+            if download.size <= limit:
+                data = b"".join([chunk async for chunk in download.stream])
+        finally:
+            await download.stream.aclose()
+        return VersionContent(
+            entry_id=entry.id,
+            workspace_id=entry.workspace_id,
+            name=entry.name,
+            path=entry.path,
+            number=number,
+            size=version.size_bytes,
+            sha256=version.sha256,
+            mime_type=version.mime_type,
+            preview_kind=self._preview_kind(entry, version),
+            created_by_name=version.created_by_name,
+            created_at=version.created_at,
+            data=data,
         )
 
     async def append_version(
@@ -1134,6 +1225,147 @@ class VaultService:
             raise
         await session.refresh(entry)
         return await self.entry_view(session, entry)
+
+    async def add_version(
+        self,
+        session: AsyncSession,
+        entry_id: str,
+        filename: str,
+        content_type: str | None,
+        reader: Reader,
+        change_description: str | None,
+        *,
+        actor: StorageActor = OWNER_ACTOR,
+    ) -> dict[str, Any]:
+        """Upload new content as the next version of a file someone manages by hand."""
+        entry = await self._entry(session, entry_id)
+        workspace = await self._workspace(session, entry.workspace_id, write=True)
+        await self._require(session, actor, workspace, "write", entry)
+        if entry.kind != StorageEntryKind.FILE.value:
+            raise VaultError(409, "Only files have versions.")
+        await self._refuse_managed(session, entry)
+        if Path(self._safe_name(filename)).suffix.casefold() != Path(entry.name).suffix.casefold():
+            raise VaultError(422, f"A new version of {entry.name} must be the same type of file.")
+        before = entry.current_version_number
+        view = await self.append_version(
+            session, entry_id, content_type, reader, change_description, actor=actor
+        )
+        if view["current_version_number"] == before:
+            raise VaultError(409, "That content is identical to the current version.")
+        return view
+
+    async def restore_version(
+        self,
+        session: AsyncSession,
+        entry_id: str,
+        number: int,
+        *,
+        actor: StorageActor = OWNER_ACTOR,
+    ) -> dict[str, Any]:
+        """Make an older version current again by appending a copy of it.
+
+        History is never rewritten: every earlier version keeps its number and bytes."""
+        entry = await self._entry(session, entry_id)
+        workspace = await self._workspace(session, entry.workspace_id, write=True)
+        await self._require(session, actor, workspace, "write", entry)
+        if entry.kind != StorageEntryKind.FILE.value:
+            raise VaultError(409, "Only files have versions.")
+        if entry.trashed_at is not None:
+            raise VaultError(409, "Restore this file from Trash before restoring a version.")
+        await self._refuse_managed(session, entry)
+        if number == entry.current_version_number:
+            raise VaultError(409, f"Version {number} is already the current version.")
+        source = await self._version(session, entry, number)
+        current = await self._current_version(session, entry)
+        if current and current.sha256 == source.sha256 and current.size_bytes == source.size_bytes:
+            raise VaultError(
+                409, f"The current version already has the content of version {number}."
+            )
+        if source.status != StorageVersionStatus.AVAILABLE.value:
+            raise VaultError(409, f"Version {number} is not available to restore.")
+        remaining = self._quota(workspace) - await self._usage(session, workspace.id)
+        if source.size_bytes > remaining:
+            raise VaultError(413, "Restoring this version would exceed the workspace quota.")
+        try:
+            blob = await self.blobs.clone(source.storage_key, source.size_bytes)
+        except BlobMissingError as error:
+            await self._mark_unavailable(
+                session,
+                entry,
+                source,
+                StorageVersionStatus.MISSING.value,
+                "Stored content is missing.",
+            )
+            raise VaultError(409, f"The stored content of version {number} is missing.") from error
+        except (BlobLimitError, BlobUnsafeError) as error:
+            await self._mark_unavailable(
+                session,
+                entry,
+                source,
+                StorageVersionStatus.QUARANTINED.value,
+                "Stored content failed integrity validation.",
+            )
+            raise VaultError(409, f"Version {number} failed integrity validation.") from error
+        if blob.size != source.size_bytes or blob.sha256 != source.sha256:
+            await self.blobs.remove(blob.key)
+            await self._mark_unavailable(
+                session,
+                entry,
+                source,
+                StorageVersionStatus.QUARANTINED.value,
+                "Stored content failed integrity validation.",
+            )
+            raise VaultError(409, f"Version {number} failed integrity validation.")
+        version = StorageVersion(
+            id=self._id("stv"),
+            entry_id=entry.id,
+            number=entry.current_version_number + 1,
+            backend=self.settings.storage_backend.value,
+            storage_key=blob.key,
+            original_name=source.original_name,
+            mime_type=source.mime_type,
+            size_bytes=blob.size,
+            sha256=blob.sha256,
+            status=StorageVersionStatus.AVAILABLE.value,
+            change_description=f"Restored from version {number}.",
+            created_by_kind=actor.kind,
+            created_by_employee_id=actor.employee_id,
+            created_by_name=actor.name,
+        )
+        entry.current_version_number = version.number
+        entry.status = StorageEntryStatus.AVAILABLE.value
+        entry.last_error = None
+        try:
+            session.add(version)
+            await session.flush()
+            session.add(
+                self._event(
+                    entry.workspace_id,
+                    entry,
+                    "version_restored",
+                    f"Restored version {number} of {entry.name} as version {version.number}.",
+                    actor=actor,
+                    version=version,
+                    details={"from_version": number, "size_bytes": blob.size},
+                )
+            )
+            await self._commit_conflict(session, "This file changed concurrently.")
+        except BaseException:
+            await session.rollback()
+            await self.blobs.remove(blob.key)
+            raise
+        await session.refresh(entry)
+        return await self.entry_view(session, entry)
+
+    async def _refuse_managed(self, session: AsyncSession, entry: StorageEntry) -> None:
+        link = await self.source_link(session, entry)
+        if link is not None:
+            source = MIRRORED_SOURCES.get(link.target_type, "a source record")
+            raise VaultError(
+                409,
+                f"This file mirrors {source} and follows that record. "
+                "Its versions can be viewed, compared and downloaded, but not replaced.",
+            )
 
     async def update_entry(
         self,
@@ -1595,6 +1827,33 @@ class VaultService:
             )
         )
 
+    async def _version(
+        self, session: AsyncSession, entry: StorageEntry, number: int
+    ) -> StorageVersion:
+        version = await session.scalar(
+            select(StorageVersion).where(
+                StorageVersion.entry_id == entry.id, StorageVersion.number == number
+            )
+        )
+        if version is None:
+            raise VaultError(404, "File version not found.")
+        return version
+
+    async def source_link(self, session: AsyncSession, entry: StorageEntry) -> StorageLink | None:
+        """The registrar link that makes this file a mirror of a source record, if any.
+
+        The task, workflow, app file, code run or chat attachment stays authoritative for
+        such a file, so its history is only ever extended by the registrar."""
+        links = await session.scalars(
+            select(StorageLink)
+            .where(StorageLink.entry_id == entry.id)
+            .order_by(StorageLink.created_at, StorageLink.id)
+        )
+        for link in links:
+            if managed_relation(link.target_type, link.relation):
+                return link
+        return None
+
     async def _usage(self, session: AsyncSession, workspace_id: str) -> int:
         value = await session.scalar(
             select(func.coalesce(func.sum(StorageVersion.size_bytes), 0))
@@ -1658,8 +1917,9 @@ class VaultService:
         error: str,
     ) -> None:
         version.status = status
-        entry.status = status
-        entry.last_error = error
+        if version.number == entry.current_version_number:
+            entry.status = status
+            entry.last_error = error
         session.add(
             self._event(
                 entry.workspace_id,

@@ -555,6 +555,7 @@ class ArtifactRegistrar:
                     relation=link.relation,
                     label=link.label,
                     actor=actor,
+                    managed=True,
                 )
             return RegistrationSummary(registered=1)
         except (OSError, StorageNameError, VaultError) as error:

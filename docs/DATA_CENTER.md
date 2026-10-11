@@ -4,10 +4,11 @@ This document is the architecture and delivery tracker for the **Data Center & D
 Vault** feature. It is a separate, approval-gated feature track named **DC-1** through
 **DC-8** so that it cannot be confused with NEXUS AI's existing 16-stage roadmap.
 
-> **Current status:** DC-6 was completed on 2026-10-09 and is awaiting approval for
-> DC-7. The global product remains at **Stage 10 of 16**, with Stage 11 unapproved. The
-> 3D room, live metadata projection, owner file APIs, responsive Vault browser and
-> automatic registration of real employee artifacts are operational.
+> **Current status:** DC-7 was committed on 2026-10-11 and is awaiting approval for
+> DC-8. The global product remains at **Stage 10 of 16**, with Stage 11 unapproved. The
+> 3D room, live metadata projection, owner file APIs, responsive Vault browser, automatic
+> registration of real employee artifacts, version history with comparison and restore,
+> the engineering project viewer and the storage dashboard are operational.
 
 ## Product contract
 
@@ -41,8 +42,8 @@ reported, then stop for the owner's approval before the next one begins.
 | DC-3 | Real storage backend: upload, download, folders, rename, move, trash and validation | ✅ Complete |
 | DC-4 | Dynamic department workspaces, quotas, permissions and task/app associations | ✅ Complete |
 | DC-5 | Professional file explorer, search, previews, metadata and ZIP export | ✅ Complete |
-| DC-6 | Automatic registration of real AI employee artifacts | ✅ Complete — awaiting approval for DC-7 |
-| DC-7 | Engineering project viewer, immutable versions, restore, diffs and dashboards | ⏳ Not started |
+| DC-6 | Automatic registration of real AI employee artifacts | ✅ Complete |
+| DC-7 | Engineering project viewer, immutable versions, restore, diffs and dashboards | ✅ Complete — awaiting approval for DC-8 |
 | DC-8 | Backup/recovery, integrity, permission boundaries, performance and final polish | ⏳ Not started |
 
 DC stages do not advance `CURRENT_STAGE` in `frontend/src/lib/stages.ts` and do not
@@ -475,6 +476,91 @@ installation and real provider credentials were not used.
 | Visual inspection | **PASS** — `digital-vault-dc6-generated.png` reviewed at 1440×900 |
 | Full Playwright browser suite | **PARTIAL** — 56 passed; the same pre-existing suspended-walk test failed under software GL because the employee remained `walking` instead of reaching `away`. Every Vault, Data Center, mobile and no-WebGL test passed. |
 
+## DC-7 implementation
+
+- **Immutable version history.** Every version of a file keeps its own number, bytes,
+  checksum, creator and change note. Any version can be downloaded or previewed through
+  the same size/SHA-256 validation as the current one, and an older version stays
+  readable while the newest one is missing or corrupt. No route edits or removes a
+  single version.
+- **New versions by hand.** The owner can upload new content as the next version of a
+  file they manage. The upload must be the same type of file, counts against the
+  workspace quota, and identical content is refused instead of creating an empty step.
+- **Restore.** Restoring version *n* appends a verified copy of it as the newest
+  version with the note "Restored from version *n*." and an audit event. Earlier versions
+  are never rewritten. Restoring the current version, restoring identical content,
+  restoring from Trash or restoring an unavailable version is refused.
+- **Mirrored artifacts stay read-only.** A file registered by `ArtifactRegistrar` (task
+  result, workflow report, app source, code-run output, chat attachment) follows its
+  source record. Its history can be viewed, compared and downloaded, but a manual upload
+  or restore is refused with 409, so employee work is never replaced by something else
+  under the same name. The detail response reports this as `source_managed`.
+- **Reserved provenance relations.** Only the registrar may create the links that mark a
+  file as a source record's output (`task:result`, `workflow:report`, `app_file:source`,
+  `code_run:output-*`, `message:attachment-*`). The owner API and the controlled employee
+  `link` method are refused with 422, which closes a way to attach an unrelated file to
+  a task and have the task's result appended to it.
+- **Comparison.** `VaultInsights.diff` compares two stored versions — of one file, or of
+  two different files — from their validated bytes and returns numbered added, removed
+  and context lines. It is bounded: text files only, at most 512 KiB and 20,000 lines per
+  side, and at most 2,000 returned lines while the added/removed totals stay complete.
+  Binary, oversized and identical inputs and line-ending-only changes are reported as
+  such rather than shown as an empty result.
+- **Engineering project viewer** (`/vault/projects`). The current engineering project
+  aggregate is the real `App` with its `AppVersion` rows. For each finished version the
+  viewer lists the written files, their author, size and Vault state, and marks each as
+  added, modified or unchanged against the version it was built on (from the real file
+  contents), plus the files that were removed. A stored file can be read, downloaded and
+  compared with its previous version; a version folder can be exported as a ZIP.
+  Versions that are not ready, and files that are not stored or are in Trash, are shown
+  as exactly that.
+- **Storage dashboard** (`/vault/dashboard`). Totals, usage and quota per workspace,
+  files by artifact type and by who created them, employees with the most stored files,
+  events per day for the last 14 days in the viewer's time zone, recent activity and the
+  count of failed registrations all come from one read of the database. Empty sections
+  say "Not enough data"; nothing is estimated. An employee actor only receives the
+  workspaces it may read.
+- The Data Center room panel links to both new screens, and the three Vault screens
+  share one section bar.
+- **Fix found during verification.** Deleting an app in the instant it became ready
+  cancelled the DC-6 copy to the Vault in the middle of a write, which could leave
+  SQLite locked and fail the delete with a 500 (reproduced about once in 20 runs under
+  load). The app builder now lets that copy finish before a delete, cancel or change
+  request proceeds; `test_deleting_an_app_waits_for_its_copy_to_the_vault` covers it.
+
+### DC-7 owner routes
+
+| Route | Behavior |
+| --- | --- |
+| `GET /api/storage/entries/{id}/download?version=n` | Validated download of one named version |
+| `GET /api/storage/entries/{id}/preview?version=n` | Bounded safe preview of one named version |
+| `POST /api/storage/entries/{id}/versions` | Upload new content as the next version (not for mirrored artifacts) |
+| `POST /api/storage/entries/{id}/versions/{n}/restore` | Append a verified copy of version *n* as the newest version |
+| `GET /api/storage/diff` | Bounded line comparison of two stored versions |
+| `GET /api/storage/projects` | Engineering apps with their stored version, file and byte counts |
+| `GET /api/storage/projects/{app_id}` | Versions, stored files, authors and changes between versions |
+| `GET /api/storage/dashboard` | Totals, usage, composition, daily activity and recent events |
+
+## DC-7 verification
+
+All backend, browser and full-stack execution used the isolated `/root/nexus-ai-dev`
+WSL copy, temporary databases/storage roots and fake providers. The owner's running
+installation and real provider credentials were not used.
+
+| Check | Result |
+| --- | --- |
+| DC-7 version, restore, recovery, comparison, mirror, project and dashboard tests | **PASS** — 6 focused tests |
+| Complete backend suite | **PASS** — 273 passed, 4 skipped |
+| Backend Ruff; frontend ESLint and TypeScript | **PASS** |
+| Frontend unit suite | **PASS** — 199 tests |
+| Next.js production build | **PASS** — 24 routes generated |
+| Isolated full-stack smoke test | **NOT RUN** before the commit — the owner asked for an immediate commit and push. The new smoke checks (new version, comparison, restore, dashboard and project routes) are written but unexecuted. |
+| Clean staged-tree setup, migrations and smoke test | **NOT RUN** before the commit, for the same reason |
+| Focused DC-7 browser workflows | **PASS** — version upload/compare/restore; a real two-version app in the project viewer; dashboard totals equal to the API |
+| Mobile browser check | **PASS** — dashboard and project viewer without horizontal overflow |
+| Visual inspection | **PASS** — versions, projects and dashboard screenshots reviewed on desktop and phone |
+| Full Playwright browser suite | **PARTIAL** — the last complete run had 58 passed and 2 failed: the pre-existing suspended-walk test (the employee remained `walking` instead of reaching `away` under software GL) and the DC-5 Vault workflow, whose `Download` link locator had become ambiguous next to the new `Download v1` link. That locator was then made exact; the rerun on the final tree had not finished at commit time (31 passed, only the suspended-walk test failed so far). |
+
 ## Current limitations
 
 - HTTP routes act as the local company owner because NEXUS has no human authentication
@@ -485,9 +571,12 @@ installation and real provider credentials were not used.
 - Eligible existing chat attachments, ready app files, completed task/workflow results
   and real code-run outputs are registered by startup recovery. Failed/incomplete source
   records remain source records and do not become successful Vault files.
-- Historical version restore/diff, project dashboards, browser sharing workflows and
-  backup are not implemented; those belong to DC-7/DC-8. Reconciliation remains manual
-  and non-destructive.
+- Comparison is line based and text only; images, PDFs and office files report their
+  sizes and checksums but are not compared. An app version cannot be rolled back from
+  the Vault: changing an app remains a change request in Apps.
+- The dashboard is read on demand, not pushed live; it has a Refresh button.
+- Browser sharing workflows and backup are not implemented; those belong to DC-8.
+  Reconciliation remains manual and non-destructive.
 - The only implemented blob backend is local disk. Backup health is unknown while
   `NEXUS_STORAGE_BACKUP_ROOT` is unset.
 - A canonical Project model and human authentication do not yet exist. The integrations

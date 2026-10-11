@@ -61,6 +61,9 @@ export interface StorageVersion {
   size_bytes: number;
   sha256: string;
   status: "available" | "missing" | "quarantined";
+  is_current: boolean;
+  change_description: string | null;
+  created_by_kind: "owner" | "employee" | "system";
   created_by_name: string | null;
   created_at: string;
 }
@@ -102,6 +105,8 @@ export interface StorageEntryDetail extends StorageEntry {
   owner_kind: "company" | "department" | "employee";
   owner_id: string;
   owner_name: string;
+  /** The file mirrors a task, workflow, app file, code run or attachment and follows it. */
+  source_managed: boolean;
   versions: StorageVersion[];
   links: StorageLink[];
   events: StorageEvent[];
@@ -166,11 +171,157 @@ export const duplicateEntry = (id: string, changes: Record<string, unknown> = {}
 export const permanentlyDeleteEntry = (id: string) =>
   request<{ items: number; versions: number; blobs_removed: number }>(`/api/storage/entries/${id}/permanent?confirm=true`, { method: "DELETE" });
 
-export const previewUrl = (id: string) => `/api/storage/entries/${encodeURIComponent(id)}/preview`;
-export const downloadUrl = (id: string) => `/api/storage/entries/${encodeURIComponent(id)}/download`;
+const versionQuery = (version?: number) => (version ? `?version=${version}` : "");
+export const previewUrl = (id: string, version?: number) => `/api/storage/entries/${encodeURIComponent(id)}/preview${versionQuery(version)}`;
+export const downloadUrl = (id: string, version?: number) => `/api/storage/entries/${encodeURIComponent(id)}/download${versionQuery(version)}`;
 
-export async function fetchTextPreview(id: string): Promise<{ text: string; truncated: boolean }> {
-  const response = await fetch(previewUrl(id), { cache: "no-store" });
+/** Adds new content as the next version; earlier versions are kept unchanged. */
+export const uploadVersion = (id: string, file: File, changeDescription?: string) => {
+  const form = new FormData();
+  form.set("file", file);
+  if (changeDescription?.trim()) form.set("change_description", changeDescription.trim());
+  return request<StorageEntry>(`/api/storage/entries/${encodeURIComponent(id)}/versions`, { method: "POST", body: form });
+};
+/** Makes an older version current by appending a copy of it. */
+export const restoreVersion = (id: string, version: number) =>
+  request<StorageEntry>(`/api/storage/entries/${encodeURIComponent(id)}/versions/${version}/restore`, { method: "POST" });
+
+export interface DiffSide {
+  entry_id: string;
+  name: string;
+  path: string;
+  version: number;
+  size_bytes: number;
+  sha256: string;
+  created_by_name: string | null;
+  created_at: string;
+}
+
+export interface DiffLine {
+  kind: "hunk" | "context" | "add" | "remove";
+  old: number | null;
+  new: number | null;
+  text: string;
+}
+
+export interface StorageDiff {
+  before: DiffSide;
+  after: DiffSide;
+  identical: boolean;
+  comparable: boolean;
+  reason: string | null;
+  line_endings_only: boolean;
+  added: number;
+  removed: number;
+  truncated: boolean;
+  lines: DiffLine[];
+}
+
+export interface DiffRequest {
+  beforeEntry: string;
+  beforeVersion?: number;
+  afterEntry: string;
+  afterVersion?: number;
+}
+
+export const fetchDiff = ({ beforeEntry, beforeVersion, afterEntry, afterVersion }: DiffRequest) => {
+  const params = new URLSearchParams({ before_entry: beforeEntry, after_entry: afterEntry });
+  if (beforeVersion) params.set("before_version", String(beforeVersion));
+  if (afterVersion) params.set("after_version", String(afterVersion));
+  return request<StorageDiff>(`/api/storage/diff?${params}`);
+};
+
+export interface StorageProject {
+  id: string;
+  name: string;
+  description: string;
+  current_version: number;
+  latest_status: string | null;
+  version_count: number;
+  ready_version_count: number;
+  stored_file_count: number;
+  stored_bytes: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ProjectFile {
+  path: string;
+  area: string;
+  purpose: string;
+  author_name: string | null;
+  author_role: string | null;
+  entry_id: string | null;
+  /** "available", another storage status, "trashed", or "not_stored". */
+  state: string;
+  size_bytes: number | null;
+  sha256: string | null;
+  change: "added" | "modified" | "unchanged" | null;
+  previous_entry_id: string | null;
+}
+
+export interface ProjectVersion {
+  id: string;
+  number: number;
+  base_version: number | null;
+  status: string;
+  request: string;
+  stack: string | null;
+  tree_sha256: string | null;
+  finished_at: string | null;
+  folder_id: string | null;
+  stored_file_count: number;
+  stored_bytes: number;
+  files: ProjectFile[];
+  removed: string[];
+}
+
+export interface StorageProjectDetail {
+  id: string;
+  name: string;
+  description: string;
+  current_version: number;
+  created_at: string;
+  updated_at: string;
+  versions: ProjectVersion[];
+}
+
+export const fetchProjects = () => request<StorageProject[]>("/api/storage/projects");
+export const fetchProject = (id: string) => request<StorageProjectDetail>(`/api/storage/projects/${encodeURIComponent(id)}`);
+
+export interface DashboardWorkspace extends StorageWorkspace {
+  name: string;
+  file_count: number;
+}
+
+export interface StorageDashboard {
+  generated_at: string;
+  utc_offset_minutes: number;
+  totals: {
+    files: number;
+    folders: number;
+    trashed: number;
+    versions: number;
+    stored_bytes: number;
+    unavailable_files: number;
+    error_events: number;
+    registration_failures: number;
+  };
+  workspaces: DashboardWorkspace[];
+  by_type: { artifact_type: string | null; files: number; bytes: number }[];
+  by_creator: { kind: "owner" | "employee" | "system"; files: number }[];
+  top_creators: { employee_id: string; name: string | null; files: number }[];
+  activity: { date: string; events: number; errors: number }[];
+  recent_events: (StorageEvent & { workspace_id: string | null })[];
+  projects: { apps: number; ready_versions: number; stored_files: number } | null;
+}
+
+/** Days in the activity chart are the viewer's own calendar days. */
+export const fetchDashboard = () =>
+  request<StorageDashboard>(`/api/storage/dashboard?utc_offset_minutes=${-new Date().getTimezoneOffset()}`);
+
+export async function fetchTextPreview(id: string, version?: number): Promise<{ text: string; truncated: boolean }> {
+  const response = await fetch(previewUrl(id, version), { cache: "no-store" });
   if (!response.ok) {
     const body = response.headers.get("content-type")?.includes("application/json") ? await response.json() : null;
     throw new ApiError(typeof body?.detail === "string" ? body.detail : `Preview failed (${response.status})`, response.status);

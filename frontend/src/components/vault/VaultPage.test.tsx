@@ -65,7 +65,8 @@ describe("VaultPage", () => {
           owner_kind: "company",
           owner_id: "company",
           owner_name: "Nexus AI",
-          versions: [{ id: "stv_1", number: 1, mime_type: "text/markdown", size_bytes: 18, sha256: "a".repeat(64), status: "available", created_by_name: "Owner", created_at: timestamp }],
+          source_managed: false,
+          versions: [{ id: "stv_1", number: 1, mime_type: "text/markdown", size_bytes: 18, sha256: "a".repeat(64), status: "available", is_current: true, change_description: null, created_by_kind: "owner", created_by_name: "Owner", created_at: timestamp }],
           links: [],
           events: [{ id: 1, kind: "file_uploaded", level: "info", actor_name: "Owner", text: "Uploaded release notes.", created_at: timestamp }],
         });
@@ -93,6 +94,8 @@ describe("VaultPage", () => {
     expect(await screen.findByText((_, element) => element?.tagName === "PRE" && element.textContent?.includes("Ship safely.") === true)).toBeInTheDocument();
     expect(screen.getByText("Nexus AI")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Download" })).toHaveAttribute("href", "/api/storage/entries/ste_file/download");
+    expect(screen.getByRole("link", { name: "Download v1" })).toHaveAttribute("href", "/api/storage/entries/ste_file/download?version=1");
+    expect(screen.getByRole("navigation", { name: "Vault sections" })).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "List" }));
     expect(screen.getByRole("columnheader", { name: "Updated" })).toBeInTheDocument();

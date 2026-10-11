@@ -727,7 +727,14 @@ confirmed Trash deletion and streamed ZIP export. It does not advance the global
 persisted task results, workflow reports, app files, code-run outputs and chat
 attachments into the Vault, appends immutable versions when source bytes change, and
 retains links to the originating records. Startup recovery backfills eligible existing
-sources without inventing files.
+sources without inventing files. DC-7 adds per-version download and preview, owner
+uploads of a new version, and restore, which appends a verified copy instead of
+rewriting history. Files mirrored from a source record refuse manual versions and
+restores, and only the registrar may create the provenance relations that mark a file
+as a source record's output. `VaultInsights` is a read-only layer over the same
+permission and integrity checks: a bounded line comparison of two stored versions, the
+engineering project viewer (real `App`/`AppVersion` rows with the stored files and the
+changes between versions) and the storage dashboard.
 
 Searchable metadata lives in the existing database and immutable bytes live under
 opaque keys in the configurable local storage root. `VaultService` coordinates both;

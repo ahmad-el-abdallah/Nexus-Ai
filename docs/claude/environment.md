@@ -25,7 +25,16 @@
   - never run a mutating git command from WSL on `/mnt/c/…` (line endings differ);
     commit from Windows git;
   - Google Chrome is installed in WSL for Playwright (`E2E_SOFTWARE_GL=1`);
-  - the sandbox (bubblewrap, systemd user session) works in that WSL.
+  - the sandbox (bubblewrap, systemd user session) works in that WSL;
+  - `make` is not installed there: run the commands behind each Makefile target
+    directly, with `~/.local/share/nexus-ai-wsl/node/bin` and `~/.local/bin` on `PATH`;
+  - WSL stops the distro when nothing is running in it and `/tmp` is empty on the next
+    start, so keep logs you need later under `$HOME`, and a background run dies when the
+    `wsl.exe` that started it exits;
+  - in Git Bash on Windows a bare `python` never returns and tools such as `file`,
+    `sort` and `wc` are blocked; do that work inside WSL instead;
+  - a clean-copy check: `git -c core.autocrlf=false archive "$(git write-tree)"` piped
+    into `tar -x` in a new WSL folder gives exactly the staged files with LF endings.
 
 ## Running servers
 - Owner's dev: `./start.sh` or `make dev` → backend 8000 (`--reload`), frontend 3000

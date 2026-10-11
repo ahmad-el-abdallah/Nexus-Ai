@@ -117,7 +117,7 @@ project directory, so stop `make dev` first.
 
 Shell environment variables override `.env` values.
 
-#### Data Center storage (DC-6 automatic artifacts and browser operations)
+#### Data Center storage (DC-7 versions, projects, dashboard and browser operations)
 
 These server-side settings are implemented and validated. `GET /api/storage/overview`
 returns safe aggregate metadata for the 3D Data Center panel without exposing file
@@ -140,6 +140,18 @@ creates immutable versions when source bytes change, and records provenance link
 Recorded run outputs that are missing, unsafe or unsupported create an error audit event
 and no file entry. The Vault's **AI generated** view is the `ai-generated` tag filter;
 it is never populated with samples.
+
+Versions are immutable. `download` and `preview` accept `?version=n`;
+`POST /api/storage/entries/{id}/versions` uploads the next version of a hand-managed
+file (same file type, quota enforced, identical content refused) and
+`POST …/versions/{n}/restore` appends a verified copy of version *n*. Both answer 409
+for a file mirrored from a task, workflow, app file, code run or attachment, and the
+relations that mark such a file can only be written by the registrar (422 otherwise).
+`GET /api/storage/diff?before_entry=…&after_entry=…[&before_version=…&after_version=…]`
+returns a line comparison limited to text files of at most 512 KiB and 20,000 lines per
+side and 2,000 returned lines. `GET /api/storage/projects[/{app_id}]` backs
+`/vault/projects`, and `GET /api/storage/dashboard?utc_offset_minutes=…` backs
+`/vault/dashboard`; its day buckets use the caller's UTC offset.
 
 | Variable | Default | Purpose |
 | --- | --- | --- |
